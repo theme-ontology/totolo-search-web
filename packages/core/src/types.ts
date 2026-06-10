@@ -24,7 +24,7 @@ export interface SearchResult {
   doc_id: number;
   score: number;
   name: string;
-  doc_type: string;
+  doc_type: 'theme' | 'story' | 'collection' | 'story-theme';
   title: string;
   date: string;
   description: string;

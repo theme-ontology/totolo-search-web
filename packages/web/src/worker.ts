@@ -5,7 +5,8 @@ import type { Document, ScoredHit } from '@totolo-search/core';
 const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
 const RERANK_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 
-type Pipe = Awaited<ReturnType<typeof pipeline>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Pipe = any;
 
 let embedder: Pipe | null = null;
 let reranker: Pipe | null = null;
@@ -87,7 +88,6 @@ async function scorePassages(query: string, candidates: number[]): Promise<Array
   if (pairs.length === 0) return [];
 
   const inputs = pairs.map(p => [query, p.passage] as [string, string]);
-  // @ts-expect-error transformers overloads
   const rawScores: Array<{ label: string; score: number } | Array<{ label: string; score: number }>> =
     await reranker(inputs, { topk: null });
 
@@ -127,7 +127,6 @@ self.addEventListener('message', async (ev: MessageEvent) => {
       loadEmbedder()
         .then(async () => {
           if (cancelWarmup.embed) return;
-          // @ts-expect-error overloads
           await embedder('something wicked this way comes', { pooling: 'mean', normalize: true });
         })
         .then(() => loadReranker())
@@ -138,7 +137,6 @@ self.addEventListener('message', async (ev: MessageEvent) => {
                     'The narrative explores themes of darkness, fate, and the supernatural. ' +
                     'Human will is tested against malevolent forces beyond ordinary understanding.';
           const batch = Array.from({ length: 5 }, () => [q, p] as [string, string]);
-          // @ts-expect-error overloads
           await reranker(batch, { topk: null });
         })
         .then(() => self.postMessage({ type: 'models_ready' }))
@@ -159,7 +157,6 @@ self.addEventListener('message', async (ev: MessageEvent) => {
         await loadEmbedder();
         const t1 = performance.now();
 
-        // @ts-expect-error overloads
         const out = await embedder(query, { pooling: 'mean', normalize: true });
         const queryVec = out.data as Float32Array;
         const t2 = performance.now();
