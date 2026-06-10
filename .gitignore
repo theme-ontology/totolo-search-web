@@ -1,0 +1,12 @@
+node_modules/
+**/.vite/
+dist/
+.env
+*.env.local
+*.env.*.local
+
+# Local dev artifacts
+corpus.json
+dist-data/
+packages/web/public/test-data/
+totolo

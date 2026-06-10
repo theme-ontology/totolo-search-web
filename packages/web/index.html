@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Totolo Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      background: #f8f9fa;
+      color: #212529;
+      min-height: 100vh;
+    }
+
+    #app { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem; }
+
+    header { margin-bottom: 1.5rem; }
+
+    h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 1rem; color: #111; }
+
+    .search-row {
+      display: flex;
+      gap: .5rem;
+    }
+
+    #query {
+      flex: 1;
+      padding: .65rem 1rem;
+      font-size: 1rem;
+      border: 1.5px solid #ced4da;
+      border-radius: 6px;
+      outline: none;
+      background: #fff;
+      transition: border-color .15s;
+    }
+    #query:focus { border-color: #495057; }
+    #query:disabled { opacity: .5; cursor: not-allowed; }
+
+    #search-btn {
+      padding: .65rem 1.1rem;
+      font-size: .9rem;
+      font-weight: 600;
+      background: #495057;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    #search-btn:hover:not(:disabled) { background: #343a40; }
+    #search-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .search-options {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: .45rem;
+      font-size: .82rem;
+      color: #495057;
+    }
+    .type-filter { display: flex; gap: .6rem; flex-wrap: wrap; }
+    .type-filter label { display: flex; align-items: center; gap: .25rem; cursor: pointer; }
+    .type-filter input[type=radio] { accent-color: #495057; }
+
+    .right-options {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-left: auto;
+    }
+    .regex-label {
+      display: flex;
+      align-items: center;
+      gap: .25rem;
+      cursor: pointer;
+      color: #6c757d;
+    }
+    .regex-label input[type=checkbox] { accent-color: #495057; }
+
+    .status { font-size: .8rem; color: #6c757d; margin-top: .4rem; min-height: 1.2em; }
+    .status.error { color: #dc3545; }
+
+    #overall-progress {
+      margin-top: .4rem;
+      height: 5px;
+      background: #dee2e6;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #overall-fill {
+      height: 100%;
+      background: #495057;
+      transition: width .3s ease;
+      width: 0%;
+    }
+
+    #progress { margin-top: .35rem; }
+    .progress-label { font-size: .75rem; color: #6c757d; margin-bottom: .25rem; }
+    .progress-track { height: 4px; background: #dee2e6; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #adb5bd; transition: width .1s; }
+
+    #results { margin-top: 1.5rem; }
+
+    .result-count {
+      font-size: .8rem;
+      color: #6c757d;
+      margin-bottom: .75rem;
+    }
+    .phase-tag {
+      background: #e9ecef;
+      padding: .1em .4em;
+      border-radius: 3px;
+      font-size: .75em;
+    }
+
+    .result {
+      background: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      padding: .85rem 1rem;
+      margin-bottom: .6rem;
+      border-left: 3px solid transparent;
+    }
+    .result.type-theme       { border-left-color: #6c757d; }
+    .result.type-story       { border-left-color: #0d6efd; }
+    .result.type-collection  { border-left-color: #198754; }
+    .result.type-story-theme { border-left-color: #9c36b5; }
+
+    .result-header {
+      display: flex;
+      align-items: baseline;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin-bottom: .35rem;
+    }
+
+    .result-type {
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #6c757d;
+      padding: .1em .35em;
+      background: #f1f3f5;
+      border-radius: 3px;
+      flex-shrink: 0;
+      min-width: 5.5em;
+      text-align: center;
+    }
+
+    .result-name {
+      font-weight: 600;
+      font-size: .95rem;
+      color: #0d6efd;
+      text-decoration: none;
+    }
+    .result-name:hover { text-decoration: underline; }
+
+    .result-theme-name {
+      font-size: .85rem;
+      color: #495057;
+      text-decoration: none;
+      font-style: italic;
+    }
+    .result-theme-name:hover { text-decoration: underline; color: #0d6efd; }
+
+.result-title { font-size: .85rem; color: #495057; font-style: italic; }
+
+    .result-parents { font-size: .78rem; color: #868e96; }
+    .result-parent { color: #868e96; text-decoration: none; }
+    .result-parent:hover { color: #495057; text-decoration: underline; }
+    .result-parent-sep { color: #adb5bd; }
+    .result-date { font-size: .82rem; color: #6c757d; }
+
+    .result-desc, .result-snippet {
+      font-size: .85rem;
+      color: #495057;
+      line-height: 1.5;
+    }
+    .result-snippet { color: #343a40; }
+
+    .no-results { color: #6c757d; font-size: .9rem; }
+
+    mark {
+      background: rgba(255, 193, 7, 0.28);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    #debug-info {
+      display: none;
+      margin-top: .75rem;
+      padding: .6rem .75rem;
+      background: #f1f3f5;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      font-size: .75rem;
+      font-family: monospace;
+      color: #495057;
+      line-height: 1.6;
+    }
+    #debug-info.visible { display: block; }
+    .debug-section { margin-bottom: .3rem; }
+    .debug-label { color: #868e96; }
+    .debug-good { color: #198754; }
+    .debug-warn { color: #dc3545; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Totolo Search</h1>
+      <div class="search-row">
+        <input
+          type="search"
+          id="query"
+          placeholder='Search… (use "phrase" +require -exclude)'
+          autocomplete="off"
+          maxlength="300"
+          disabled
+        >
+        <button id="search-btn" disabled>Search</button>
+      </div>
+      <div class="search-options">
+        <div class="type-filter">
+          <label><input type="radio" name="doc-type" value="all" checked> All</label>
+          <label><input type="radio" name="doc-type" value="theme"> Themes</label>
+          <label><input type="radio" name="doc-type" value="story"> Stories</label>
+          <label><input type="radio" name="doc-type" value="story-theme"> Annotations</label>
+        </div>
+        <div class="right-options">
+          <label class="regex-label"><input type="checkbox" id="regex-mode"> Regex</label>
+          <label class="regex-label"><input type="checkbox" id="debug-mode"> Debug</label>
+        </div>
+      </div>
+      <div id="status" class="status">Loading…</div>
+      <div id="overall-progress"><div id="overall-fill"></div></div>
+      <div id="progress"></div>
+    </header>
+    <div id="debug-info"></div>
+    <main>
+      <div id="results"></div>
+    </main>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
