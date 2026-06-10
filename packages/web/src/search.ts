@@ -37,14 +37,14 @@ function hydrateResults(
 ): SearchResult[] {
   const byId = new Map(corpus.map(d => [d.doc_id, d]));
   const terms = parseTerms(query);
-  return rankedIds.slice(0, FINAL_K).map(({ doc_id, score }) => {
+  return rankedIds.slice(0, FINAL_K).flatMap(({ doc_id, score }) => {
     const doc = byId.get(doc_id);
-    if (!doc) return null;
+    if (!doc) return [];
     const snippet = snippets.get(doc_id) ?? '';
     const excerpt = snippet
       ? snippet.replace(/^[^.]+\.\s*/, '').slice(0, 200)
       : (findExcerpt(doc.search_body, terms) ?? doc.description.slice(0, 120) + (doc.description.length > 120 ? '…' : ''));
-    return {
+    return [{
       doc_id,
       score,
       name: doc.name,
@@ -57,8 +57,8 @@ function hydrateResults(
       semantic_score: semanticScores.get(doc_id) ?? 0,
       theme_level: doc.theme_level,
       parents: doc.parents,
-    } satisfies SearchResult;
-  }).filter((r): r is SearchResult => r !== null);
+    } satisfies SearchResult];
+  });
 }
 
 // Returns null if pattern is invalid regex, otherwise up to 200 matching docs.
