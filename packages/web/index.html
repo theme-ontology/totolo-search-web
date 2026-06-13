@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Totolo Search</title>
-  <meta name="description" content="Fast in-browser hybrid search over the Theme Ontology — themes, stories, and annotations.">
-  <meta property="og:title" content="Totolo Search">
-  <meta property="og:description" content="Fast in-browser hybrid search over the Theme Ontology — themes, stories, and annotations.">
-  <meta property="og:url" content="https://theme-ontology.github.io/totolo-search-web/">
+  <title>Search · Theme Ontology</title>
+  <meta name="description" content="Fast in-browser hybrid search over the Theme Ontology: themes, stories, and annotations.">
+  <meta property="og:title" content="Theme Ontology Search">
+  <meta property="og:description" content="Fast in-browser hybrid search over the Theme Ontology: themes, stories, and annotations.">
+  <meta property="og:url" content="https://uat.themeontology.org/search/">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,7 +22,29 @@
 
     #app { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem; }
 
-    header { margin-bottom: 1.5rem; }
+    /* Top nav — kept in sync with packages/indexer/src/pages.ts (framework-free) */
+    .nav { background: #fff; border-bottom: 1px solid #dee2e6; }
+    .nav-inner { max-width: 1140px; margin: 0 auto; padding: .55rem 1rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .nav-brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.05rem; letter-spacing: -.3px; color: #111; text-decoration: none; }
+    .nav-brand img { display: block; }
+    .nav-links { display: flex; align-items: center; gap: 1.25rem; margin-left: auto; }
+    .nav-links a { color: #495057; text-decoration: none; font-size: .9rem; font-weight: 500; }
+    .nav-links a:hover { color: #111; }
+    .nav-links a.active { color: #111; font-weight: 600; }
+    .nav-links .ext-mark { font-size: .8em; color: #adb5bd; }
+    .nav-main { margin-left: 1.5rem; flex: 1; }
+    .nav-main .nav-versions { margin-left: auto; }
+    .nav-links a.nav-search { color: #212529; background: #fff; border: 1px solid #ced4da; font-weight: 600; padding: .3rem .9rem; border-radius: 6px; }
+    .nav-links a.nav-search:hover, .nav-links a.nav-search.active { color: #111; background: #f8f9fa; border-color: #868e96; }
+    .nav-toggle { display: none; }
+    .nav-burger { display: none; margin-left: auto; cursor: pointer; font-size: 1.4rem; line-height: 1; color: #495057; user-select: none; padding: .1rem .3rem; }
+    @media (max-width: 640px) {
+      .nav-burger { display: inline-flex; }
+      .nav-links { display: none; width: 100%; flex-direction: column; align-items: flex-start; gap: .6rem; margin: .4rem 0 .2rem; }
+      .nav-toggle:checked ~ .nav-links { display: flex; }
+    }
+
+    #app > header { margin-bottom: 1.5rem; }
 
     h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 1rem; color: #111; }
 
@@ -307,9 +329,21 @@
   </style>
 </head>
 <body>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26"><span>Theme Ontology</span></a>
+      <input type="checkbox" id="nav-toggle" class="nav-toggle">
+      <label for="nav-toggle" class="nav-burger" aria-label="Menu">&#9776;</label>
+      <nav class="nav-links nav-main">
+        <a class="nav-search active" href="/search/">Search</a>
+        <a class="nav-versions" href="/versions/">Versions</a>
+        <a href="https://github.com/theme-ontology/totolo-search-web" target="_blank" rel="noopener">GitHub <span class="ext-mark" aria-hidden="true">&#8599;</span></a>
+      </nav>
+    </div>
+  </header>
   <div id="app">
     <header>
-      <h1>Totolo Search</h1>
+      <h1>Search</h1>
       <div class="search-row">
         <input
           type="search"

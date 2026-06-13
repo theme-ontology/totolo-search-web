@@ -8,7 +8,8 @@
       "program": "${workspaceFolder}/scripts/dev.mjs",
       "args": [],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": false
     },
     {
       "name": "Dev: local (skip corpus)",
@@ -17,7 +18,8 @@
       "program": "${workspaceFolder}/scripts/dev.mjs",
       "args": ["--skip-corpus"],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": false
     },
     {
       "name": "Dev: local (skip index)",
@@ -26,7 +28,38 @@
       "program": "${workspaceFolder}/scripts/dev.mjs",
       "args": ["--skip-index"],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": false
+    },
+    {
+      "name": "UAT: local (full)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/uat.mjs",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": false
+    },
+    {
+      "name": "UAT: local (skip corpus)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/uat.mjs",
+      "args": ["--skip-corpus"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": false
+    },
+    {
+      "name": "UAT: local (skip index)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/uat.mjs",
+      "args": ["--skip-index"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "autoAttachChildProcesses": false
     }
   ]
 }

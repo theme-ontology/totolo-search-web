@@ -308,6 +308,20 @@ async function main() {
   // Reset filters to a known state (browsers may restore prior radio selection).
   typeRadios.forEach(r => { r.checked = r.value === 'all'; });
 
+  // Ask the browser to keep our IndexedDB artifact cache across sessions, so it isn't
+  // evicted under storage pressure (best-effort; combined with the content-addressed
+  // version_key this avoids re-downloading the index on repeat visits).
+  if (navigator.storage?.persist) void navigator.storage.persist();
+
+  // Point the nav at this deployment's base — '/' normally, '/<tag>/' for a release
+  // build — so the top-bar links stay within the deployment.
+  {
+    const siteBase = (import.meta.env.BASE_URL || '/').replace(/search\/?$/, '');
+    document.querySelector('.nav-brand')?.setAttribute('href', siteBase);
+    document.querySelector('.nav-search')?.setAttribute('href', `${siteBase}search/`);
+    document.querySelector('.nav-versions')?.setAttribute('href', `${siteBase}versions/`);
+  }
+
   // The search field is usable immediately — focus it and let the user type while
   // the index loads. Guards below no-op until keyword search is ready.
   queryEl.focus();

@@ -6,7 +6,7 @@ dist/
 *.env.*.local
 
 # Local dev artifacts
-corpus.json
+corpus*.json
 dist-data/
 packages/web/public/test-data/
 packages/web/public/models/

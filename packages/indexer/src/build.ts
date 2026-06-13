@@ -18,6 +18,10 @@ const doUpload = args.includes('--upload');
 // artifact URLs relative to the manifest's URL, so no deploy-time patching needed.
 const prefixFlag = args.indexOf('--index-prefix');
 const indexPrefix = prefixFlag >= 0 && args[prefixFlag + 1] ? args[prefixFlag + 1] : '.';
+// Regenerate only the static pages (front/versions/docs/robots/css), reusing the
+// existing index + embedding artifacts. Skips the slow embedding step — for fast
+// local iteration on page markup/styling.
+const pagesOnly = args.includes('--pages-only');
 
 function sha256hex(data: Buffer | string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -29,6 +33,13 @@ async function main() {
   console.log(`Loading corpus from: ${corpusPath}`);
   const docs = await loadCorpus(corpusPath);
   console.log(`Loaded ${docs.length} documents.`);
+
+  if (pagesOnly) {
+    console.log('Regenerating pages only (reusing existing index/embeddings)...');
+    const n = await writePages(corpusPath, docs, outDir);
+    console.log(`  ${n} page files (html + overflow json) + front/versions/robots/css/js`);
+    return;
+  }
 
   // Build MiniSearch index
   console.log('Building keyword index...');
@@ -46,10 +57,10 @@ async function main() {
   await writeFile(join(outDir, 'corpus.json'), corpusBuf);
   console.log(`  corpus.json: ${(corpusBuf.length / 1024).toFixed(0)} KB`);
 
-  // Static detail pages (theme/<slug>.html, story/<slug>.html) for every document.
+  // Static site: front page, detail pages, versions page, robots.txt, shared CSS.
   console.log('Generating pages...');
   const nPages = await writePages(corpusPath, docs, outDir);
-  console.log(`  ${nPages} pages -> theme/, story/`);
+  console.log(`  ${nPages} page files (html + overflow json) + front/versions/robots/css/js`);
 
   // Title index: themes/stories/collections, embedded on search_title.
   // Deliberately embed search_title only (name + aliases for themes; name/aliases/
@@ -76,28 +87,36 @@ async function main() {
 
   // Build manifest
   const now = new Date().toISOString();
-  const dateHash = now.slice(0, 10).replace(/-/g, '') + '-' + sha256hex(miniSearchBuf).slice(0, 8);
+  const modelVersion = 'all-minilm-l6-v2';
+  const hashes = {
+    'minisearch.json': sha256hex(miniSearchBuf),
+    'corpus.json': sha256hex(corpusBuf),
+    'embeddings.bin': sha256hex(embeddingsBuf),
+    'embeddings-annotations.bin': sha256hex(annEmbeddingsBuf),
+  };
+  // Content-addressed version key (NOT date-based): identical data produces an
+  // identical key, so a client keeps its cached artifacts across rebuilds/days and
+  // only re-downloads when content actually changes. The model id is mixed in so an
+  // embedding-model change invalidates the cache.
+  const versionKey = sha256hex(
+    modelVersion + '|' + Object.keys(hashes).sort().map(k => `${k}=${hashes[k as keyof typeof hashes]}`).join('|'),
+  ).slice(0, 16);
 
   const manifest: Manifest = {
     created: now,
-    version_key: dateHash,
+    version_key: versionKey,
     index_prefix: indexPrefix,
-    model_version: 'all-minilm-l6-v2',
+    model_version: modelVersion,
     n_docs: docs.length,
     dims: EMBED_DIMS,
     doc_ids: embeddableDocs.map(d => d.doc_id),
     annotation_doc_ids: annotationDocs.map(d => d.doc_id),
-    hashes: {
-      'minisearch.json': sha256hex(miniSearchBuf),
-      'corpus.json': sha256hex(corpusBuf),
-      'embeddings.bin': sha256hex(embeddingsBuf),
-      'embeddings-annotations.bin': sha256hex(annEmbeddingsBuf),
-    },
+    hashes,
   };
 
   const manifestBuf = Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8');
   await writeFile(join(outDir, 'latest.json'), manifestBuf);
-  console.log(`\nManifest written: ${dateHash}`);
+  console.log(`\nManifest written: ${versionKey}`);
 
   if (doUpload) {
     const bucket = process.env['S3_BUCKET'];
@@ -106,7 +125,7 @@ async function main() {
       console.error('S3_BUCKET env var is required for --upload');
       process.exit(1);
     }
-    await upload({ bucket, region, prefix: dateHash, outDir, manifest });
+    await upload({ bucket, region, prefix: versionKey, outDir, manifest });
     console.log('Upload complete.');
   } else {
     console.log('\nSkipping upload (pass --upload to push to S3).');
