@@ -5,9 +5,13 @@ name: Deploy UAT to S3/CloudFront
 # role below; trust is restricted to this repo's default branch.
 #
 # Layout in s3://totolo-web-uat (UAT only — prod is a separate bucket/repo):
-#   <branch>/<month>/   app + index artifacts + generated pages   (immutable per month)
-#   models/             Hugging Face model files                  (shared across months)
-#   index.html          copy of the latest deployment's entry page (root serves latest)
+#   <root>/             the live site (built at base "/", so URLs carry no version)
+#   <branch>/<month>/   per-month snapshot for retention / rollback
+#   models/             Hugging Face model files (shared; referenced at /models/)
+#
+# The live site serves from the bucket root, so uat.themeontology.org/story/… etc. are
+# version-less. To roll back, copy a snapshot prefix over the root. (Prod is different:
+# it intentionally exposes /<version>/<date>/ for many concurrent versions.)
 #
 # Required repo Variables (Settings → Secrets and variables → Actions → Variables):
 #   AWS_DEPLOY_ROLE_ARN, AWS_REGION, S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID
@@ -41,13 +45,14 @@ jobs:
           MONTH="$(date -u +%Y-%m)"
           PREFIX="$BRANCH/$MONTH"
           echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
-          # Baked into the build: app served under /<branch>/<month>/, models shared at /models/
+          # Built at base "/" so all URLs are version-less; the live site serves from
+          # the bucket root. Models are referenced at the shared /models/ prefix.
           {
-            echo "APP_BASE=/$PREFIX/"
-            echo "VITE_LATEST_JSON_URL=/$PREFIX/latest.json"
+            echo "APP_BASE=/"
+            echo "VITE_LATEST_JSON_URL=/latest.json"
             echo "VITE_MODELS_URL=/models/"
           } >> "$GITHUB_ENV"
-          echo "Deploying to /$PREFIX/"
+          echo "Publishing to root; snapshot at /$PREFIX/"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -109,28 +114,29 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Upload versioned deployment
+      - name: Publish live site to bucket root
+        run: |
+          # Version-less URLs: everything serves from the root. --delete prunes stale
+          # files (old hashed assets) but never touches the shared models/ or the
+          # snapshot prefixes.
+          aws s3 sync site/ "s3://${{ vars.S3_BUCKET }}/" --delete \
+            --exclude "models/*" --exclude "main/*" \
+            --cache-control "public, max-age=300"
+
+      - name: Snapshot for retention / rollback
         run: |
           aws s3 sync site/ "s3://${{ vars.S3_BUCKET }}/${{ steps.vars.outputs.prefix }}/" \
             --delete --cache-control "public, max-age=300"
 
       - name: Upload shared models
         run: |
-          # Immutable per file, shared across months; long cache, never --delete.
+          # Immutable per file, shared across deployments; long cache, never --delete.
           aws s3 sync packages/web/public/models/ "s3://${{ vars.S3_BUCKET }}/models/" \
             --cache-control "public, max-age=31536000, immutable"
-
-      - name: Point root at this deployment
-        run: |
-          # The entry page references its assets/data by absolute /<branch>/<month>/ URLs,
-          # so copying it to the bucket root makes uat.themeontology.org/ serve the latest
-          # deployment invisibly (no redirect). Short cache + invalidation keep it fresh.
-          aws s3 cp site/index.html "s3://${{ vars.S3_BUCKET }}/index.html" \
-            --cache-control "no-cache" --content-type "text/html"
 
       - name: Invalidate CloudFront
         if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID != '' }}
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
-            --paths "/" "/index.html" "/${{ steps.vars.outputs.prefix }}/*"
+            --paths "/*"
