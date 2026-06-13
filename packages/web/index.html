@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Totolo Search</title>
+  <meta name="description" content="Fast in-browser hybrid search over the Theme Ontology — themes, stories, and annotations.">
+  <meta property="og:title" content="Totolo Search">
+  <meta property="og:description" content="Fast in-browser hybrid search over the Theme Ontology — themes, stories, and annotations.">
+  <meta property="og:url" content="https://theme-ontology.github.io/totolo-search-web/">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -104,21 +109,79 @@
     .progress-track { height: 4px; background: #dee2e6; border-radius: 2px; overflow: hidden; }
     .progress-fill { height: 100%; background: #adb5bd; transition: width .1s; }
 
-    #results { margin-top: 1.5rem; }
+    main { margin-top: 1.5rem; }
 
     .result-count {
       font-size: .8rem;
       color: #6c757d;
       margin-bottom: .75rem;
     }
-    .phase-tag {
-      background: #e9ecef;
-      padding: .1em .4em;
+    .result-count:empty { display: none; }
+
+    #retry-btn {
+      margin-top: .4rem;
+      padding: .35rem .9rem;
+      font-size: .85rem;
+      font-weight: 600;
+      background: #495057;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #retry-btn:hover:not(:disabled) { background: #343a40; }
+    #retry-btn:disabled { opacity: .5; cursor: wait; }
+
+    /* Results header: count on the left, the three search-phase pills on the right */
+    .results-header {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      flex-wrap: wrap;
+      margin-bottom: .75rem;
+      min-height: 1.2em;
+    }
+    .result-count { margin-bottom: 0; }
+    .search-phases { display: flex; gap: .3rem; margin-left: auto; }
+    .search-phases:empty { display: none; }
+    .phase-pill {
+      font-size: .68rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: .12em .5em;
       border-radius: 3px;
-      font-size: .75em;
+      background: #f1f3f5;
+      color: #ced4da;               /* light gray = not yet applied */
+      transition: color .2s, background .2s;
+    }
+    .phase-pill.is-active {
+      background: #e9ecef;
+      color: #495057;               /* darkened = applied */
     }
 
+    /* Subtle background indicator while the semantic model loads */
+    .semantic-loading {
+      display: none;
+      align-items: center;
+      gap: .4rem;
+      margin-top: .4rem;
+      font-size: .75rem;
+      color: #adb5bd;
+    }
+    .semantic-loading.visible { display: flex; }
+    .semantic-spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid #dee2e6;
+      border-top-color: #adb5bd;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .result {
+      position: relative;
       background: #fff;
       border: 1px solid #dee2e6;
       border-radius: 6px;
@@ -137,6 +200,7 @@
       gap: .5rem;
       flex-wrap: wrap;
       margin-bottom: .35rem;
+      padding-right: 1.4rem;  /* clearance for the copy icon pinned top-right */
     }
 
     .result-type {
@@ -152,6 +216,7 @@
       text-align: center;
     }
 
+    /* Link kinds: stories are blue, themes are violet, so the two read distinctly. */
     .result-name {
       font-weight: 600;
       font-size: .95rem;
@@ -159,21 +224,51 @@
       text-decoration: none;
     }
     .result-name:hover { text-decoration: underline; }
+    .result-name.is-theme { color: #7048e8; }
 
-    .result-theme-name {
-      font-size: .85rem;
-      color: #495057;
-      text-decoration: none;
-      font-style: italic;
+    /* Copy-name button: pinned to the upper-right of the result box; flashes a green
+       check on copy. */
+    .result-copy {
+      position: absolute;
+      top: .55rem;
+      right: .55rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px;
+      border: none;
+      background: none;
+      color: #adb5bd;
+      cursor: pointer;
+      border-radius: 4px;
+      line-height: 0;
+      transition: color .15s, background .15s;
     }
-    .result-theme-name:hover { text-decoration: underline; color: #0d6efd; }
+    .result-copy:hover { color: #495057; background: #f1f3f5; }
+    .result-copy svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .result-copy .icon-check { display: none; }
+    .result-copy.copied { color: #2f9e44; }
+    .result-copy.copied .icon-copy { display: none; }
+    .result-copy.copied .icon-check { display: inline; }
 
-.result-title { font-size: .85rem; color: #495057; font-style: italic; }
+    /* Annotation header: story + theme as equal links, smaller so both fit nicely. */
+    .result-annotation-link {
+      font-weight: 600;
+      font-size: .85rem;
+      text-decoration: none;
+    }
+    .result-annotation-link:hover { text-decoration: underline; }
+    .result-annotation-link.is-story { color: #0d6efd; }
+    .result-annotation-link.is-theme { color: #7048e8; }
 
-    .result-parents { font-size: .78rem; color: #868e96; }
-    .result-parent { color: #868e96; text-decoration: none; }
-    .result-parent:hover { color: #495057; text-decoration: underline; }
-    .result-parent-sep { color: #adb5bd; }
+    .result-title { font-size: .85rem; color: #495057; font-style: italic; }
+
+    /* Parent themes: links in a muted violet — clearly themes, but less intrusive
+       than the main theme name. */
+    .result-parents { font-size: .78rem; color: #adb5bd; }
+    .result-parent { color: #9b8bd4; text-decoration: none; }
+    .result-parent:hover { color: #7048e8; text-decoration: underline; }
+    .result-parent-sep { color: #c4b9e8; }
     .result-date { font-size: .82rem; color: #6c757d; }
 
     .result-desc, .result-snippet {
@@ -220,9 +315,9 @@
           type="search"
           id="query"
           placeholder='Search… (use "phrase" +require -exclude)'
+          aria-label="Search query"
           autocomplete="off"
           maxlength="300"
-          disabled
         >
         <button id="search-btn" disabled>Search</button>
       </div>
@@ -234,16 +329,24 @@
           <label><input type="radio" name="doc-type" value="story-theme"> Annotations</label>
         </div>
         <div class="right-options">
-          <label class="regex-label"><input type="checkbox" id="regex-mode"> Regex</label>
+          <label class="regex-label"><input type="checkbox" id="regex-mode" disabled> Regex</label>
           <label class="regex-label"><input type="checkbox" id="debug-mode"> Debug</label>
         </div>
       </div>
-      <div id="status" class="status">Loading…</div>
+      <div id="status" class="status" role="status" aria-live="polite">Loading…</div>
       <div id="overall-progress"><div id="overall-fill"></div></div>
       <div id="progress"></div>
+      <div id="semantic-loading" class="semantic-loading" role="status" aria-live="polite">
+        <span class="semantic-spinner" aria-hidden="true"></span>
+        <span id="semantic-loading-text">Loading semantic search…</span>
+      </div>
     </header>
     <div id="debug-info"></div>
     <main>
+      <div class="results-header">
+        <span id="result-count" class="result-count" role="status" aria-live="polite"></span>
+        <span id="search-phases" class="search-phases"></span>
+      </div>
       <div id="results"></div>
     </main>
   </div>

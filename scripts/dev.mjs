@@ -12,8 +12,8 @@
  * at /test-data/*, which is where VITE_LATEST_JSON_URL points in .env.development.
  */
 import { spawnSync, spawn } from 'node:child_process';
-import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
-import { resolve, dirname, join } from 'node:path';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT     = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,6 +48,10 @@ function runSync(cmd, argv, opts = {}) {
 const totalSteps = skipIndex ? 1 : skipCorpus ? 2 : 3;
 let currentStep = 0;
 
+// Ensure self-hosted models are present (idempotent; downloads on first run only).
+console.log('\x1b[2mEnsuring models are downloaded…\x1b[0m');
+runSync(NODE, [resolve(ROOT, 'scripts/fetch-models.mjs')]);
+
 // ── Step 1: Generate corpus.json via Python ────────────────────────────────
 if (!skipCorpus) {
   step(++currentStep, totalSteps, `Generating corpus${version ? ` (${version})` : ' (latest)'}…`);
@@ -77,13 +81,9 @@ if (!skipCorpus) {
 if (!skipIndex) {
   step(++currentStep, totalSteps, 'Building indexes…');
   mkdirSync(OUT_DIR, { recursive: true });
+  // index_prefix defaults to "." — the web app resolves artifacts relative to
+  // latest.json's URL, so /test-data/latest.json finds /test-data/*.
   runSync(NODE, [TSX, 'src/build.ts', CORPUS, OUT_DIR], { cwd: INDEXER });
-
-  // Patch index_prefix so the browser fetches from /test-data/ (where files are actually served)
-  const manifestPath = join(OUT_DIR, 'latest.json');
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
-  manifest.index_prefix = '/test-data';
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 }
 
 // ── Step 3: Start Vite dev server ──────────────────────────────────────────

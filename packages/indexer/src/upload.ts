@@ -11,11 +11,12 @@ interface UploadParams {
   manifest: Manifest;
 }
 
-const ARTIFACTS = ['minisearch.json', 'corpus.json', 'embeddings.bin'] as const;
+const ARTIFACTS = ['minisearch.json', 'corpus.json', 'embeddings.bin', 'embeddings-annotations.bin'] as const;
 const CONTENT_TYPES: Record<string, string> = {
   'minisearch.json': 'application/json',
   'corpus.json': 'application/json',
   'embeddings.bin': 'application/octet-stream',
+  'embeddings-annotations.bin': 'application/octet-stream',
   'latest.json': 'application/json',
 };
 

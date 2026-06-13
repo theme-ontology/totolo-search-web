@@ -1,7 +1,9 @@
 {
   "name": "totolo-search-web",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build:core": "npm run build --workspace=packages/core",
     "build:indexer": "npm run build --workspace=packages/indexer",
@@ -11,6 +13,19 @@
     "index": "npm run index --workspace=packages/indexer",
     "dev:local": "node scripts/dev.mjs",
     "dev:local:skip-corpus": "node scripts/dev.mjs --skip-corpus",
-    "dev:local:skip-index": "node scripts/dev.mjs --skip-index"
+    "dev:local:skip-index": "node scripts/dev.mjs --skip-index",
+    "uat:local": "node scripts/uat.mjs",
+    "uat:local:skip-corpus": "node scripts/uat.mjs --skip-corpus",
+    "uat:local:skip-index": "node scripts/uat.mjs --skip-index",
+    "fetch-models": "node scripts/fetch-models.mjs",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.4",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^4.1.8"
   }
 }

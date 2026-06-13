@@ -4,7 +4,9 @@ const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
 const BATCH_SIZE = 64;
 export const EMBED_DIMS = 384;
 
-type Extractor = Awaited<ReturnType<typeof pipeline>>;
+// The transformers pipeline return type is a union too complex for tsc to represent
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Extractor = any;
 
 let extractor: Extractor | null = null;
 
@@ -21,18 +23,26 @@ export async function embedTexts(texts: string[]): Promise<Float32Array> {
   const ext = await getExtractor();
   const allVecs: Float32Array[] = [];
 
+  const LOG_INTERVAL_MS = 30_000;
+  let lastLog = 0;
+
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
-    process.stdout.write(`\r  Embedding ${Math.min(i + BATCH_SIZE, texts.length)}/${texts.length}...`);
 
-    // @ts-expect-error transformers pipeline overloads vary
     const output = await ext(batch, { pooling: 'mean', normalize: true });
 
     // output.data is Float32Array of shape [batch * dims]
     const data = output.data as Float32Array;
     allVecs.push(data);
+
+    const done = Math.min(i + BATCH_SIZE, texts.length);
+    const now = Date.now();
+    // Log at most every 30s (plus the final batch) to keep CI logs readable.
+    if (now - lastLog >= LOG_INTERVAL_MS || done === texts.length) {
+      console.log(`  Embedding ${done}/${texts.length}...`);
+      lastLog = now;
+    }
   }
-  process.stdout.write('\n');
 
   const total = texts.length * EMBED_DIMS;
   const result = new Float32Array(total);

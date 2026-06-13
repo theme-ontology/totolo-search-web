@@ -9,8 +9,50 @@ function themeontologyUrl(docType: string, name: string): string {
   return `${THEMEONTOLOGY_BASE}/story/${encoded}`;
 }
 
+// Locally generated detail pages (built by the indexer next to the other artifacts).
+// Configured by main.ts once the corpus is loaded; until then — or for any name
+// without a known slug — links fall back to themeontology.org.
+let pagesBase = '';
+let pageSlugs: Map<string, string> | null = null; // key: `${doc_type}:${name}`
+
+export function setPageLinks(base: string, slugs: Map<string, string>) {
+  pagesBase = base;
+  pageSlugs = slugs;
+}
+
+function docUrl(docType: string, name: string): string {
+  if (pagesBase && pageSlugs) {
+    const slug = docType === 'theme'
+      ? pageSlugs.get(`theme:${name}`)
+      : (pageSlugs.get(`${docType}:${name}`)
+        ?? pageSlugs.get(`story:${name}`)
+        ?? pageSlugs.get(`collection:${name}`));
+    if (slug) return `${pagesBase}${docType === 'theme' ? 'theme' : 'story'}/${slug}.html`;
+  }
+  return themeontologyUrl(docType, name);
+}
+
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Escapes a string for use inside a double-quoted HTML attribute.
+function escAttr(s: string): string {
+  return escHtml(s).replace(/"/g, '&quot;');
+}
+
+// A small button that copies the given name to the clipboard (handled by a delegated
+// listener in main.ts). Holds both a copy and a check icon; CSS swaps them when the
+// button gains the `copied` class.
+function copyButton(name: string): string {
+  return `<button class="result-copy" type="button" data-copy="${escAttr(name)}"`
+    + ` title="Copy name" aria-label="Copy name to clipboard">`
+    + `<svg class="icon-copy" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">`
+    + `<rect x="9" y="9" width="11" height="11" rx="2"></rect>`
+    + `<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`
+    + `<svg class="icon-check" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">`
+    + `<polyline points="20 6 9 17 4 12"></polyline></svg>`
+    + `</button>`;
 }
 
 // Splits text at regex match boundaries, escapes each segment, wraps matches in <mark>.
@@ -42,7 +84,7 @@ function makeHighlighter(phase: ResultsPhase, query: string): Highlighter {
     }
   }
 
-  if (phase === 'semantic' || phase === 'reranked') {
+  if (phase === 'semantic' || phase === 'reranked' || phase === 'keyword') {
     const terms = [...new Set(
       query.split(/\s+/)
         .map(t => t.replace(/^["'+\-]+|["']+$/g, ''))
@@ -59,26 +101,48 @@ function makeHighlighter(phase: ResultsPhase, query: string): Highlighter {
 
 export function renderResults(
   container: HTMLElement,
+  countEl: HTMLElement,
   results: SearchResult[],
   phase: ResultsPhase,
   query = '',
 ) {
-  if (phase === 'searching') { container.innerHTML = ''; return; }
+  if (phase === 'searching') {
+    container.innerHTML = '';
+    countEl.innerHTML = '';
+    return;
+  }
   if (results.length === 0) {
-    container.innerHTML = (phase === 'semantic' || phase === 'reranked' || phase === 'regex')
+    countEl.innerHTML = '';
+    container.innerHTML = (phase === 'semantic' || phase === 'reranked' || phase === 'regex' || phase === 'keyword')
       ? '<p class="no-results">No results.</p>'
       : '';
     return;
   }
-  const phaseLabel = phase === 'reranked' ? ' <span class="phase-tag">re-ranked</span>'
-    : phase === 'semantic' ? ' <span class="phase-tag">semantic</span>'
-    : phase === 'regex' ? ' <span class="phase-tag">regex</span>'
-    : '';
   const hl = makeHighlighter(phase, query);
-  container.innerHTML = `
-    <p class="result-count">${results.length} results${phaseLabel}</p>
-    ${results.map(r => renderResult(r, hl)).join('')}
-  `;
+  countEl.innerHTML = `${results.length} results`;
+  container.innerHTML = results.map(r => renderResult(r, hl)).join('');
+}
+
+function pill(label: string, active: boolean): string {
+  return `<span class="phase-pill${active ? ' is-active' : ''}">${label}</span>`;
+}
+
+// Renders the three search-phase pills, darkening those that have applied to the
+// current results. Phases are cumulative: semantic implies keyword, reranked implies
+// both. Regex is its own phase. Empty phase (no active query) clears the pills.
+export function renderPhases(el: HTMLElement, phase: ResultsPhase | 'none') {
+  if (phase === 'none') {
+    el.innerHTML = '';
+    return;
+  }
+  if (phase === 'regex') {
+    el.innerHTML = pill('regex', true);
+    return;
+  }
+  const keyword = phase === 'keyword' || phase === 'semantic' || phase === 'reranked';
+  const semantic = phase === 'semantic' || phase === 'reranked';
+  const reranked = phase === 'reranked';
+  el.innerHTML = pill('keyword', keyword) + pill('semantic', semantic) + pill('re-ranked', reranked);
 }
 
 function renderResult(r: SearchResult, hl: Highlighter): string {
@@ -88,8 +152,10 @@ function renderResult(r: SearchResult, hl: Highlighter): string {
     : r.doc_type;
 
   if (r.doc_type === 'story-theme') {
-    const storyUrl = themeontologyUrl('story', r.name);
-    const themeUrl = themeontologyUrl('theme', r.title);
+    // Story and theme are equally important — both are links, sized to fit on one
+    // line, and styled by kind (story = blue, theme = violet).
+    const storyUrl = docUrl('story', r.name);
+    const themeUrl = docUrl('theme', r.title);
     const levelParen = r.theme_level
       ? ` <span class="result-date">(${escHtml(r.theme_level)})</span>`
       : '';
@@ -97,21 +163,23 @@ function renderResult(r: SearchResult, hl: Highlighter): string {
       <article class="result ${typeClass}">
         <header class="result-header">
           <span class="result-type">${escHtml(typeLabel)}</span>
-          <a class="result-name" href="${storyUrl}" target="_blank" rel="noopener">${escHtml(r.name)}</a>
-          <a class="result-theme-name" href="${themeUrl}" target="_blank" rel="noopener">${escHtml(r.title)}</a>${levelParen}
+          <a class="result-annotation-link is-story" href="${storyUrl}" target="_blank" rel="noopener">${escHtml(r.name)}</a>
+          <a class="result-annotation-link is-theme" href="${themeUrl}" target="_blank" rel="noopener">${escHtml(r.title)}</a>${levelParen}
         </header>
         <p class="result-desc">${hl(r.description)}</p>
       </article>
     `;
   }
 
-  const nameUrl = themeontologyUrl(r.doc_type, r.name);
+  const nameUrl = docUrl(r.doc_type, r.name);
+  // Themes get the violet link style so they read distinctly from stories.
+  const nameClass = r.doc_type === 'theme' ? 'result-name is-theme' : 'result-name';
 
   let subtitle = '';
   if (r.doc_type === 'theme') {
     if (r.parents && r.parents.length > 0) {
       const parentLinks = r.parents
-        .map(p => `<a class="result-parent" href="${themeontologyUrl('theme', p)}" target="_blank" rel="noopener">${escHtml(p)}</a>`)
+        .map(p => `<a class="result-parent" href="${docUrl('theme', p)}" target="_blank" rel="noopener">${escHtml(p)}</a>`)
         .join('<span class="result-parent-sep">, </span>');
       subtitle = `<span class="result-parents">&#x21D2; ${parentLinks}</span>`;
     }
@@ -130,7 +198,8 @@ function renderResult(r: SearchResult, hl: Highlighter): string {
     <article class="result ${typeClass}">
       <header class="result-header">
         <span class="result-type">${escHtml(typeLabel)}</span>
-        <a class="result-name" href="${nameUrl}" target="_blank" rel="noopener">${escHtml(r.name)}</a>
+        <a class="${nameClass}" href="${nameUrl}" target="_blank" rel="noopener">${escHtml(r.name)}</a>
+        ${copyButton(r.name)}
         ${subtitle}
       </header>
       ${body}

@@ -9,4 +9,5 @@ dist/
 corpus.json
 dist-data/
 packages/web/public/test-data/
+packages/web/public/models/
 totolo

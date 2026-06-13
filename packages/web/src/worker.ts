@@ -1,6 +1,7 @@
-import { pipeline } from '@huggingface/transformers';
-import { makePassages, unionDedup } from '@totolo-search/core';
-import type { Document, ScoredHit } from '@totolo-search/core';
+import { pipeline, env } from '@huggingface/transformers';
+import { makePassages, unionDedup, applyPoolFilter } from '@totolo-search/core';
+import type { ScoredHit } from '@totolo-search/core';
+import type { WorkerDoc, RegexHit } from './worker-types.js';
 
 const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
 const RERANK_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
@@ -14,7 +15,12 @@ let embedMatrix: Float32Array | null = null;
 let docIds: number[] = [];
 let nDocs = 0;
 let dims = 0;
-let corpus: Document[] = [];
+// Annotation (story-theme) embedding index — loaded lazily via 'init_annotations'.
+let annMatrix: Float32Array | null = null;
+let annDocIds: number[] = [];
+let annNDocs = 0;
+let corpus: WorkerDoc[] = [];
+const typeById = new Map<number, string>();
 let useWebGPU = false;
 const cancelWarmup = { embed: false, rerank: false };
 
@@ -23,16 +29,29 @@ function pipelineOpts(task: 'embed' | 'rerank'): Record<string, unknown> {
   return { dtype: 'q8' };
 }
 
+// Forward model file download progress to the main thread for the progress bar.
+function progressCallback(p: { status?: string; file?: string; loaded?: number; total?: number }) {
+  if (p.status === 'progress' && p.total && p.file) {
+    self.postMessage({ type: 'model_progress', file: p.file, loaded: p.loaded ?? 0, total: p.total });
+  }
+}
+
 async function loadEmbedder() {
   if (!embedder) {
     self.postMessage({ type: 'progress', label: 'Loading embedding model…' });
     try {
-      embedder = await pipeline('feature-extraction', EMBED_MODEL, pipelineOpts('embed'));
+      embedder = await pipeline('feature-extraction', EMBED_MODEL, {
+        ...pipelineOpts('embed'),
+        progress_callback: progressCallback,
+      });
     } catch (err) {
       if (useWebGPU) {
         useWebGPU = false;
         self.postMessage({ type: 'webgpu_fallback' });
-        embedder = await pipeline('feature-extraction', EMBED_MODEL, { dtype: 'q8' });
+        embedder = await pipeline('feature-extraction', EMBED_MODEL, {
+          dtype: 'q8',
+          progress_callback: progressCallback,
+        });
       } else throw err;
     }
   }
@@ -42,11 +61,17 @@ async function loadReranker() {
   if (!reranker) {
     self.postMessage({ type: 'progress', label: 'Loading re-ranker…' });
     try {
-      reranker = await pipeline('text-classification', RERANK_MODEL, pipelineOpts('rerank'));
+      reranker = await pipeline('text-classification', RERANK_MODEL, {
+        ...pipelineOpts('rerank'),
+        progress_callback: progressCallback,
+      });
     } catch (err) {
       if (useWebGPU) {
         useWebGPU = false;
-        reranker = await pipeline('text-classification', RERANK_MODEL, { dtype: 'q8' });
+        reranker = await pipeline('text-classification', RERANK_MODEL, {
+          dtype: 'q8',
+          progress_callback: progressCallback,
+        });
       } else throw err;
     }
   }
@@ -58,12 +83,21 @@ function cosineSimilarity(a: Float32Array, b: Float32Array, bOffset: number): nu
   return dot;
 }
 
-function vectorSearch(queryVec: Float32Array, topK: number): ScoredHit[] {
-  if (!embedMatrix || nDocs === 0) return [];
+// Annotations use their own matrix; themes/stories use the title matrix and are
+// restricted to the selected type so a rare type still fills the candidate list.
+function vectorSearch(queryVec: Float32Array, topK: number, typeFilter: string): ScoredHit[] {
+  const useAnn = typeFilter === 'story-theme';
+  const matrix = useAnn ? annMatrix : embedMatrix;
+  const ids = useAnn ? annDocIds : docIds;
+  const n = useAnn ? annNDocs : nDocs;
+  if (!matrix || n === 0) return [];
+  const restrict = typeFilter !== 'all' && !useAnn;
   const sims: Array<[number, number]> = [];
-  for (let i = 0; i < nDocs; i++) {
-    const sim = cosineSimilarity(queryVec, embedMatrix, i * dims);
-    sims.push([docIds[i], sim]);
+  for (let i = 0; i < n; i++) {
+    const id = ids[i];
+    if (restrict && !matchesType(typeById.get(id) ?? '', typeFilter)) continue;
+    const sim = cosineSimilarity(queryVec, matrix, i * dims);
+    sims.push([id, sim]);
   }
   sims.sort((a, b) => b[1] - a[1]);
   return sims.slice(0, topK).map(([doc_id, score]) => ({ doc_id, score, source: 'semantic' as const }));
@@ -109,18 +143,63 @@ async function scorePassages(query: string, candidates: number[]): Promise<Array
     .sort((a, b) => b.score - a.score);
 }
 
+function matchesType(docType: string, filter: string): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'story') return docType === 'story' || docType === 'collection';
+  return docType === filter;
+}
+
+function regexSearch(pattern: string, typeFilter: string): RegexHit[] | null {
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern, 'i');
+  } catch {
+    return null;
+  }
+  const hits: RegexHit[] = [];
+  for (const doc of corpus) {
+    if (!matchesType(doc.doc_type, typeFilter)) continue;
+    const text = doc.search_title + '\n' + doc.search_body + '\n' + doc.search_misc;
+    if (!re.test(text)) continue;
+    const bodyMatch = re.exec(doc.search_body);
+    let excerpt = '';
+    let snippet = '';
+    if (bodyMatch) {
+      const ctx = 150;
+      const s = Math.max(0, bodyMatch.index - ctx);
+      const e = Math.min(doc.search_body.length, bodyMatch.index + bodyMatch[0].length + ctx);
+      excerpt = (s > 0 ? '…' : '') + doc.search_body.slice(s, e) + (e < doc.search_body.length ? '…' : '');
+      snippet = bodyMatch[0];
+    }
+    hits.push({ doc_id: doc.doc_id, excerpt, snippet });
+    if (hits.length >= 200) break;
+  }
+  return hits;
+}
+
 self.addEventListener('message', async (ev: MessageEvent) => {
   const msg = ev.data as { type: string } & Record<string, unknown>;
 
   switch (msg.type) {
     case 'init': {
+      // Serve models from our own origin (downloaded at build time) instead of the
+      // Hugging Face CDN, which trips CORS. modelsBase is an absolute URL ending in '/'.
+      const modelsBase = msg.modelsBase as string | undefined;
+      if (modelsBase) {
+        env.allowRemoteModels = false;
+        env.allowLocalModels = true;
+        env.localModelPath = modelsBase;
+      }
+
       const buf = msg.embeddings as ArrayBuffer;
       const view = new DataView(buf);
       nDocs = view.getUint32(0, true);
       dims = view.getUint32(4, true);
       embedMatrix = new Float32Array(buf, 8, nDocs * dims);
       docIds = msg.docIds as number[];
-      corpus = msg.corpus as Document[];
+      corpus = msg.corpus as WorkerDoc[];
+      typeById.clear();
+      for (const d of corpus) typeById.set(d.doc_id, d.doc_type);
       useWebGPU = (msg.useWebGPU as boolean) ?? false;
       self.postMessage({ type: 'ready' });
 
@@ -150,6 +229,9 @@ self.addEventListener('message', async (ev: MessageEvent) => {
       const keywordHits = msg.keywordHits as number[];
       const topK = (msg.topK as number | undefined) ?? 30;
       const rerank = (msg.rerank as boolean | undefined) ?? false;
+      const required = (msg.required as string[] | undefined) ?? [];
+      const excluded = (msg.excluded as string[] | undefined) ?? [];
+      const typeFilter = (msg.typeFilter as string | undefined) ?? 'all';
 
       try {
         const t0 = performance.now();
@@ -161,11 +243,15 @@ self.addEventListener('message', async (ev: MessageEvent) => {
         const queryVec = out.data as Float32Array;
         const t2 = performance.now();
 
-        const semanticHits = vectorSearch(queryVec, topK);
+        const semanticHits = vectorSearch(queryVec, topK, typeFilter);
         const lexicalHits: ScoredHit[] = keywordHits.map((id, rank) => ({
           doc_id: id, score: 1 / (rank + 1), source: 'lexical' as const,
         }));
-        const candidateIds = unionDedup([lexicalHits, semanticHits]);
+        let candidateIds = unionDedup([lexicalHits, semanticHits]);
+        // Enforce +required / -excluded on the merged pool so semantic hits respect operators
+        if (required.length > 0 || excluded.length > 0) {
+          candidateIds = applyPoolFilter(candidateIds, corpus, required, excluded);
+        }
         const t3 = performance.now();
 
         const timings: Record<string, number> = {
@@ -192,6 +278,30 @@ self.addEventListener('message', async (ev: MessageEvent) => {
         }
       } catch (err) {
         self.postMessage({ type: 'error', message: String(err) });
+      }
+      break;
+    }
+
+    case 'init_annotations': {
+      const buf = msg.embeddings as ArrayBuffer;
+      const view = new DataView(buf);
+      annNDocs = view.getUint32(0, true);
+      const annDims = view.getUint32(4, true);
+      annMatrix = new Float32Array(buf, 8, annNDocs * annDims);
+      annDocIds = msg.docIds as number[];
+      self.postMessage({ type: 'annotations_ready' });
+      break;
+    }
+
+    case 'regex_search': {
+      const pattern = msg.pattern as string;
+      const typeFilter = (msg.typeFilter as string | undefined) ?? 'all';
+      const generation = msg.generation as number;
+      const hits = regexSearch(pattern, typeFilter);
+      if (hits === null) {
+        self.postMessage({ type: 'regex_results', generation, invalid: true, results: [] });
+      } else {
+        self.postMessage({ type: 'regex_results', generation, invalid: false, results: hits });
       }
       break;
     }

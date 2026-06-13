@@ -1,0 +1,136 @@
+name: Deploy UAT to S3/CloudFront
+
+# Builds the production bundle and publishes it to the UAT bucket behind
+# uat.themeontology.org. Auth is GitHub OIDC (no stored AWS keys) assuming the IAM
+# role below; trust is restricted to this repo's default branch.
+#
+# Layout in s3://totolo-web-uat (UAT only — prod is a separate bucket/repo):
+#   <branch>/<month>/   app + index artifacts + generated pages   (immutable per month)
+#   models/             Hugging Face model files                  (shared across months)
+#   index.html          copy of the latest deployment's entry page (root serves latest)
+#
+# Required repo Variables (Settings → Secrets and variables → Actions → Variables):
+#   AWS_DEPLOY_ROLE_ARN, AWS_REGION, S3_BUCKET, CLOUDFRONT_DISTRIBUTION_ID
+
+on:
+  push:
+    branches: [main]   # the trunk; the URL path segment is derived from the branch name
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-uat
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute deploy path
+        id: vars
+        run: |
+          BRANCH="$GITHUB_REF_NAME"
+          MONTH="$(date -u +%Y-%m)"
+          PREFIX="$BRANCH/$MONTH"
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+          # Baked into the build: app served under /<branch>/<month>/, models shared at /models/
+          {
+            echo "APP_BASE=/$PREFIX/"
+            echo "VITE_LATEST_JSON_URL=/$PREFIX/latest.json"
+            echo "VITE_MODELS_URL=/models/"
+          } >> "$GITHUB_ENV"
+          echo "Deploying to /$PREFIX/"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install totolo
+        run: pip install totolo
+
+      - name: Generate corpus
+        run: python -m totolo.util.makejson -tsc > corpus.json
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Cache HuggingFace models (build-time embeddings)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ runner.os }}-all-minilm-l6-v2
+
+      - name: Build indexes + pages
+        working-directory: packages/indexer
+        run: node ../../node_modules/tsx/dist/cli.mjs src/build.ts ../../corpus.json ../../dist-data
+
+      - name: Cache self-hosted model files
+        uses: actions/cache@v4
+        with:
+          path: packages/web/public/models
+          key: web-models-${{ hashFiles('scripts/fetch-models.mjs') }}
+
+      - name: Download models
+        run: node scripts/fetch-models.mjs
+
+      - name: Build web app
+        working-directory: packages/web
+        run: npm run build   # reads APP_BASE / VITE_* from the env set above
+
+      - name: Assemble site
+        run: |
+          # App + index artifacts + pages; models kept aside for the shared prefix.
+          rm -rf site && mkdir site
+          cp -r packages/web/dist/* site/
+          rm -rf site/models
+          cp -r dist-data/* site/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Upload versioned deployment
+        run: |
+          aws s3 sync site/ "s3://${{ vars.S3_BUCKET }}/${{ steps.vars.outputs.prefix }}/" \
+            --delete --cache-control "public, max-age=300"
+
+      - name: Upload shared models
+        run: |
+          # Immutable per file, shared across months; long cache, never --delete.
+          aws s3 sync packages/web/public/models/ "s3://${{ vars.S3_BUCKET }}/models/" \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Point root at this deployment
+        run: |
+          # The entry page references its assets/data by absolute /<branch>/<month>/ URLs,
+          # so copying it to the bucket root makes uat.themeontology.org/ serve the latest
+          # deployment invisibly (no redirect). Short cache + invalidation keep it fresh.
+          aws s3 cp site/index.html "s3://${{ vars.S3_BUCKET }}/index.html" \
+            --cache-control "no-cache" --content-type "text/html"
+
+      - name: Invalidate CloudFront
+        if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/" "/index.html" "/${{ steps.vars.outputs.prefix }}/*"

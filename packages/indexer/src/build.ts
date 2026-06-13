@@ -7,12 +7,17 @@ import { getMiniSearchOptions } from '@totolo-search/core';
 import type { Manifest } from '@totolo-search/core';
 import { loadCorpus } from './corpus.js';
 import { embedTexts, packEmbeddings, EMBED_DIMS } from './embed.js';
+import { writePages } from './pages.js';
 import { upload } from './upload.js';
 
 const args = process.argv.slice(2);
 const corpusPath = args[0] ?? resolve('../python-totolo-search/corpus.json');
 const outDir = args[1] ?? resolve('./out');
 const doUpload = args.includes('--upload');
+// Default "." means artifacts live next to latest.json; the web app resolves
+// artifact URLs relative to the manifest's URL, so no deploy-time patching needed.
+const prefixFlag = args.indexOf('--index-prefix');
+const indexPrefix = prefixFlag >= 0 && args[prefixFlag + 1] ? args[prefixFlag + 1] : '.';
 
 function sha256hex(data: Buffer | string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -41,14 +46,33 @@ async function main() {
   await writeFile(join(outDir, 'corpus.json'), corpusBuf);
   console.log(`  corpus.json: ${(corpusBuf.length / 1024).toFixed(0)} KB`);
 
-  // Build embeddings for embeddable docs only (story-theme excluded — lexical search only)
-  console.log('Generating embeddings...');
+  // Static detail pages (theme/<slug>.html, story/<slug>.html) for every document.
+  console.log('Generating pages...');
+  const nPages = await writePages(corpusPath, docs, outDir);
+  console.log(`  ${nPages} pages -> theme/, story/`);
+
+  // Title index: themes/stories/collections, embedded on search_title.
+  // Deliberately embed search_title only (name + aliases for themes; name/aliases/
+  // title/date/authors for stories), not descriptions. This keeps build time low and
+  // matches title-centric queries well; semantic recall on description text relies on
+  // the cross-encoder rerank stage instead. See README "Design notes" before changing.
+  console.log('Generating title embeddings...');
   const embeddableDocs = docs.filter(d => d.doc_type !== 'story-theme');
   const titles = embeddableDocs.map(d => d.search_title);
   const embeddings = await embedTexts(titles);
   const embeddingsBuf = packEmbeddings(embeddings, embeddableDocs.length);
   await writeFile(join(outDir, 'embeddings.bin'), embeddingsBuf);
   console.log(`  embeddings.bin: ${(embeddingsBuf.length / 1024).toFixed(0)} KB`);
+
+  // Annotation index: story-theme annotations, embedded on theme name + motivation.
+  // Downloaded lazily by the web app (large), only when the Annotations filter is used.
+  console.log('Generating annotation embeddings...');
+  const annotationDocs = docs.filter(d => d.doc_type === 'story-theme');
+  const annTexts = annotationDocs.map(d => `${d.title}. ${d.search_body}`);
+  const annEmbeddings = await embedTexts(annTexts);
+  const annEmbeddingsBuf = packEmbeddings(annEmbeddings, annotationDocs.length);
+  await writeFile(join(outDir, 'embeddings-annotations.bin'), annEmbeddingsBuf);
+  console.log(`  embeddings-annotations.bin: ${(annEmbeddingsBuf.length / 1024).toFixed(0)} KB`);
 
   // Build manifest
   const now = new Date().toISOString();
@@ -57,15 +81,17 @@ async function main() {
   const manifest: Manifest = {
     created: now,
     version_key: dateHash,
-    index_prefix: doUpload ? `s3://${process.env['S3_BUCKET'] ?? 'your-bucket'}/${dateHash}` : `./${dateHash}`,
+    index_prefix: indexPrefix,
     model_version: 'all-minilm-l6-v2',
     n_docs: docs.length,
     dims: EMBED_DIMS,
     doc_ids: embeddableDocs.map(d => d.doc_id),
+    annotation_doc_ids: annotationDocs.map(d => d.doc_id),
     hashes: {
       'minisearch.json': sha256hex(miniSearchBuf),
       'corpus.json': sha256hex(corpusBuf),
       'embeddings.bin': sha256hex(embeddingsBuf),
+      'embeddings-annotations.bin': sha256hex(annEmbeddingsBuf),
     },
   };
 

@@ -6,6 +6,7 @@ export function lexicalSearch(
   ms: MiniSearch<Document>,
   parsed: ParsedQuery,
   k: number,
+  filter?: (doc_id: number) => boolean,
 ): ScoredHit[] {
   if (!parsed.free_text.trim()) return [];
 
@@ -35,7 +36,11 @@ export function lexicalSearch(
     }
   }
 
-  const hits: ScoredHit[] = Array.from(scoreMap.entries())
+  // Apply the type filter before truncating to k, so a rare type still fills the list.
+  let entries = Array.from(scoreMap.entries());
+  if (filter) entries = entries.filter(([doc_id]) => filter(doc_id));
+
+  const hits: ScoredHit[] = entries
     .map(([doc_id, score]) => ({ doc_id, score, source: 'lexical' as const }))
     .sort((a, b) => b.score - a.score)
     .slice(0, k);
@@ -43,9 +48,11 @@ export function lexicalSearch(
   return hits;
 }
 
+// Note: `-` with a quoted phrase excludes docs containing all the words (stemmed,
+// anywhere in the doc), not the contiguous phrase. See README "Query syntax".
 export function applyPoolFilter(
   docIds: number[],
-  corpus: Document[],
+  corpus: ReadonlyArray<Pick<Document, 'doc_id' | 'search_title' | 'search_body' | 'search_misc'>>,
   required: string[],
   excluded: string[],
 ): number[] {

@@ -12,6 +12,8 @@ export interface Document {
   search_misc: string;
   theme_level?: string;
   parents?: string[];
+  // Filename slug of this doc's generated detail page (themes/stories/collections only)
+  slug?: string;
 }
 
 export interface ScoredHit {
@@ -49,6 +51,10 @@ export interface Manifest {
   model_version: string;
   n_docs: number;
   dims: number;
+  // doc ids embedded in embeddings.bin (themes/stories/collections, title-based)
   doc_ids: number[];
+  // doc ids embedded in embeddings-annotations.bin (story-theme, motivation-based);
+  // this index is downloaded lazily, only when the Annotations filter is used
+  annotation_doc_ids: number[];
   hashes: Record<string, string>;
 }

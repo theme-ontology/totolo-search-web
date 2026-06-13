@@ -4,3 +4,4 @@ export { parseOperators } from './parse.js';
 export { lexicalSearch, applyPoolFilter } from './query.js';
 export { makePassages } from './passages.js';
 export { unionDedup, rrfScores, sortByRrf } from './fusion.js';
+export { slugify } from './slug.js';

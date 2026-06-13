@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { slugify } from '@totolo-search/core';
 import type { Document } from '@totolo-search/core';
 
 interface RawTheme {
@@ -103,6 +104,16 @@ export async function loadCorpus(corpusPath: string): Promise<Document[]> {
       search_body: c.description ?? '',
       search_misc: [c.examples, c.notes].filter(Boolean).join(' '),
     });
+  }
+
+  // Assign page slugs to themes/stories/collections (annotations have no own page).
+  // Globally unique across all types: collisions get a deterministic -2, -3… suffix.
+  const usedSlugs = new Map<string, number>();
+  for (const d of docs) {
+    const base = slugify(d.name);
+    const n = (usedSlugs.get(base) ?? 0) + 1;
+    usedSlugs.set(base, n);
+    d.slug = n === 1 ? base : `${base}-${n}`;
   }
 
   for (const s of [...(raw.stories ?? []), ...(raw.collections ?? [])]) {
