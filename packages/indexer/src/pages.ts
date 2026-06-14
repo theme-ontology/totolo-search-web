@@ -465,12 +465,8 @@ function versionsPage(version: string): string {
         // the manifest's current flag (the version mirrored to the site root).
         return hasPathMatch ? v.path === here : (here === '/' && !!v.current);
       };
-      // Build date, shown only when it differs from the row label (avoids "2026-06-14 2026-06-14").
-      var built = function (v, label) {
-        if (!v.built) return '';
-        var d = new Date(v.built).toISOString().slice(0, 10);
-        return d === label ? '' : '<span class="muted">' + d + '</span>';
-      };
+      // Full build date (YYYY-MM-DD, no time) for every entry.
+      var ymd = function (v) { return v.built ? new Date(v.built).toISOString().slice(0, 10) : (v.date || ''); };
       var badges = function (v, latest) {
         return (isCurrent(v) ? '<span class="badge current">current</span>' : '')
           + (latest ? '<span class="badge latest">latest</span>' : '');
@@ -486,22 +482,24 @@ function versionsPage(version: string): string {
       var downloads = function (v) {
         return '<span class="downloads">' + dl(v, 'themes') + dl(v, 'stories') + dl(v, 'collections') + '</span>';
       };
-      var row = function (v, label, latest) {
+      // Branch rows are labelled by their build date; release rows by tag, with the build date alongside.
+      var row = function (v, label, latest, showDate) {
         return '<div class="version-row"><span class="date">' + link(v.path || '#', label) + '</span>'
-          + built(v, label) + badges(v, latest) + downloads(v) + '</div>';
+          + (showDate ? '<span class="muted">' + ymd(v) + '</span>' : '')
+          + badges(v, latest) + downloads(v) + '</div>';
       };
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
       var html = '';
       Object.keys(byBranch).sort().forEach(function (branch) {
         html += '<div class="version-branch">' + branch + '</div>';
-        byBranch[branch].sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
-          .forEach(function (v, i) { html += row(v, v.date || 'unknown', i === 0); });
+        byBranch[branch].sort(function (a, b) { return (b.built || '').localeCompare(a.built || ''); })
+          .forEach(function (v, i) { html += row(v, ymd(v), i === 0, false); });
       });
       if (releases.length) {
         html += '<div class="version-branch">releases</div>';
         releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); })
-          .forEach(function (v, i) { html += row(v, v.tag || 'unknown', i === 0); });
+          .forEach(function (v, i) { html += row(v, v.tag || 'unknown', i === 0, true); });
       }
       el.innerHTML = html;
     })
@@ -617,7 +615,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
   await writeFile(join(outDir, 'index.html'), frontPage(raw, version), 'utf-8');
   await writeFile(join(outDir, 'versions', 'index.html'), versionsPage(version), 'utf-8');
   await writeFile(join(outDir, 'robots.txt'),
-    'User-agent: *\nDisallow: /main/\nDisallow: /versions/\n', 'utf-8');
+    'User-agent: *\nDisallow: /master/\nDisallow: /versions/\n', 'utf-8');
 
   // Per-version dataset files ({lto, <type>} shape, as on themeontology.org/data), hosted
   // alongside this version's pages so any row on the versions page can offer downloads --

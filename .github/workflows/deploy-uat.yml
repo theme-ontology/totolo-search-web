@@ -31,6 +31,7 @@ on:
       - 'scripts/**'
       - 'docs/**'
       - '**/*.md'
+      - '.github/workflows/**'   # workflow edits don't change site content; avoid clobbering pages
   workflow_dispatch:
 
 permissions:
@@ -62,10 +63,12 @@ jobs:
       - name: Compute snapshot prefix
         id: vars
         run: |
+          # The UAT root serves the latest theme-ontology build, whose source branch is
+          # "master" (theming's default). Label it "master", not this app repo's branch.
           MONTH="$(date -u +%Y-%m)"
-          echo "branch=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "branch=master" >> "$GITHUB_OUTPUT"
           echo "month=$MONTH" >> "$GITHUB_OUTPUT"
-          echo "prefix=$GITHUB_REF_NAME/$MONTH" >> "$GITHUB_OUTPUT"
+          echo "prefix=master/$MONTH" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -136,7 +139,7 @@ jobs:
               data = {'versions': []}
           vs = [v for v in data.get('versions', []) if not (v.get('branch')==branch and v.get('date')==month)]
           for v in vs:                      # past snapshots: not current, link to their /<branch>/<month>/
-              if not v.get('branch'):       # leave release / non-branch entries untouched
+              if v.get('track') or not v.get('branch'):   # leave release/track (own-path) entries untouched
                   continue
               v['current'] = False
               v['path'] = f"/{v['branch']}/{v['date']}/"
@@ -148,7 +151,7 @@ jobs:
       - name: Publish live site to bucket root
         run: |
           aws s3 sync site/ "s3://${{ env.S3_BUCKET }}/" --delete \
-            --exclude "models/*" --exclude "main/*" \
+            --exclude "models/*" --exclude "master/*" \
             --cache-control "public, max-age=300"
 
       - name: Snapshot for retention / rollback
