@@ -1,0 +1,70 @@
+name: Deploy UAT pages (fast, no index rebuild)
+
+# Fast lane for static-page / CSS changes (packages/indexer/src/pages.ts). It re-renders the
+# front / theme / story / versions pages + pages.css from the corpus ALREADY deployed in the
+# UAT bucket, and uploads just those files. Skips corpus generation, embeddings, model
+# download, and the search-app build -- ~1-2 min vs the full deploy-uat (~8 min). The index
+# artifacts (minisearch.json, embeddings*.bin, latest.json, corpus.json) and /models/ and
+# /search/ in the bucket are untouched (no --delete; dist-data only holds page files here).
+#
+# Auto-runs when only pages.ts changes on main, and can be dispatched manually. Anything that
+# touches the index/search app still goes through the full deploy-uat.yml.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['packages/indexer/src/pages.ts']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-uat-pages
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: eu-west-1
+  AWS_ROLE_ARN: arn:aws:iam::777087578287:role/totolo-search-web-uat-deploy
+  S3_BUCKET: totolo-web-uat
+  CLOUDFRONT_DISTRIBUTION_ID: ENYYNF7Z2NR6D
+
+jobs:
+  deploy-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch the corpus already deployed to UAT
+        run: aws s3 cp "s3://${{ env.S3_BUCKET }}/corpus.json" corpus.json
+
+      - name: Re-render pages (no index rebuild)
+        run: npm run pages   # tsx build.ts corpus.json dist-data --pages-only
+
+      - name: Upload page files only
+        # dist-data holds only page output here (no index artifacts), so a plain sync
+        # without --delete touches nothing else in the bucket. --size-only skips the
+        # thousands of unchanged HTML files, uploading just what changed (e.g. pages.css).
+        run: |
+          aws s3 sync dist-data/ "s3://${{ env.S3_BUCKET }}/" --size-only \
+            --cache-control "public, max-age=300"
+
+      - name: Invalidate page paths
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/" "/index.html" "/pages.css" "/pages.js" \
+                    "/theme/*" "/story/*" "/versions/*"

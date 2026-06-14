@@ -104,7 +104,12 @@ step(++currentStep, totalSteps, 'Starting dev server…');
 console.log('\x1b[2mFront page at /, search (HMR) at /search/ — press Ctrl+C to stop.\x1b[0m\n');
 
 // base /search/ namespaces the SPA; the dev middleware serves the rest from dist-data.
-const server = spawn(NODE, [VITE_BIN, 'dev'], {
+// Pass --host to bind 0.0.0.0 so the server is reachable on the LAN (e.g. to preview on a
+// phone at http://<this-machine-ip>:5173/). Pair with `npm run pages:watch` in another
+// terminal for a fast page/CSS loop that never rebuilds the index.
+const viteArgs = ['dev'];
+if (args.includes('--host')) viteArgs.push('--host');
+const server = spawn(NODE, [VITE_BIN, ...viteArgs], {
   cwd: WEB,
   stdio: 'inherit',
   env: { ...process.env, APP_BASE: '/search/' },

@@ -23,6 +23,14 @@ name: Deploy UAT to S3/CloudFront
 on:
   push:
     branches: [main]
+    # Page-only changes (pages.ts) go through the fast deploy-uat-pages.yml instead; docs
+    # and local scripts don't need a deploy. A push that also touches index/search code
+    # still triggers this full build.
+    paths-ignore:
+      - 'packages/indexer/src/pages.ts'
+      - 'scripts/**'
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
 
 permissions:
