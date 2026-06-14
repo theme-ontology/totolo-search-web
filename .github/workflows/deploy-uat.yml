@@ -93,11 +93,23 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-models-${{ runner.os }}-all-minilm-l6-v2
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Reuse the deployed embeddings when the corpus + model are unchanged (e.g. a push that
+      # only touches the SPA/pages or tooling). Missing object -> full build. This is what
+      # turns most UAT pushes from a ~20 min CPU embed into a ~2 min pages-only rebuild.
+      - name: Fetch deployed root manifest
+        run: aws s3 cp "s3://${{ env.S3_BUCKET }}/latest.json" prev-latest.json || echo "no previous manifest"
+
       - name: Build indexes + pages
         working-directory: packages/indexer
         env:
           SITE_BASE: ''
-        run: node ../../node_modules/tsx/dist/cli.mjs src/build.ts ../../corpus.json ../../dist-data
+        run: node ../../node_modules/tsx/dist/cli.mjs src/build.ts ../../corpus.json ../../dist-data --prev-manifest ../../prev-latest.json
 
       - name: Build search app
         working-directory: packages/web
@@ -114,12 +126,6 @@ jobs:
           mkdir site/search
           cp -r packages/web/dist/* site/search/
           rm -rf site/search/models site/search/test-data
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Update versions.json (main = current root)
         env:
@@ -153,13 +159,34 @@ jobs:
 
       - name: Publish live site to bucket root
         run: |
-          aws s3 sync site/ "s3://${{ env.S3_BUCKET }}/" --delete \
-            --exclude "models/*" --exclude "master/*" \
-            --cache-control "public, max-age=300"
+          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=300"
+          # Reuse-safe publish: top-level files use --size-only with NO --delete, so the
+          # embeddings index artifacts (not regenerated when the corpus is unchanged) and the
+          # /models/ + /master/ prefixes sharing the root all survive. Each page subtree this
+          # build fully owns gets a scoped --delete to drop stale entries.
+          aws s3 sync site/ "s3://$BUCKET/" --size-only \
+            --exclude "*/*" --exclude "versions.json" --cache-control "$CC"
+          for dir in theme story search versions; do
+            aws s3 sync "site/$dir/" "s3://$BUCKET/$dir/" --delete --size-only --cache-control "$CC"
+          done
+          # Force-upload small template-driven files (--size-only can miss same-size edits).
+          for f in index.html pages.css pages.js robots.txt favicon.svg versions/index.html; do
+            [ -f "site/$f" ] && aws s3 cp "site/$f" "s3://$BUCKET/$f" --cache-control "$CC"
+          done
+          # versions.json is this job's index of live builds — always refresh it, no-cache.
+          [ -f site/versions.json ] && aws s3 cp site/versions.json "s3://$BUCKET/versions.json" --cache-control "no-cache"
 
       - name: Snapshot for retention / rollback
         run: |
-          aws s3 sync site/ "s3://${{ env.S3_BUCKET }}/${{ steps.vars.outputs.prefix }}/" --delete \
+          BUCKET="${{ env.S3_BUCKET }}"
+          # On a reuse build the embeddings .bin files aren't regenerated locally; pull the
+          # deployed copies into site/ so the rollback snapshot stays self-contained.
+          if [ -f dist-data/.reused-embeddings ]; then
+            for b in embeddings.bin embeddings-annotations.bin; do
+              aws s3 cp "s3://$BUCKET/$b" "site/$b" || true
+            done
+          fi
+          aws s3 sync site/ "s3://$BUCKET/${{ steps.vars.outputs.prefix }}/" --delete \
             --cache-control "public, max-age=300"
 
       - name: Invalidate CloudFront
