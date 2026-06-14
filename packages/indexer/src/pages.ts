@@ -469,7 +469,7 @@ function versionsPage(version: string): string {
         html += '<div class="version-branch">releases</div>';
         releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); }).forEach(function (v) {
           html += '<div class="version-row"><span class="date">' + link(v.current ? '/' : (v.path || '#'), v.tag || 'unknown') + '</span>'
-            + (v.current ? '<span class="badge">current</span>' : '') + built(v)
+            + built(v) + (v.current ? '<span class="badge">current</span>' : '')
             + downloads(v) + '</div>';
         });
       }
