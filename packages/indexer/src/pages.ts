@@ -96,6 +96,10 @@ a { color: #0d6efd; }
   .nav-burger { display: inline-flex; }
   .nav-links { display: none; width: 100%; flex-direction: column; align-items: flex-start; gap: .6rem; margin: .4rem 0 .2rem; }
   .nav-toggle:checked ~ .nav-links { display: flex; }
+  /* Reset the desktop horizontal-bar spacing so the burger menu stacks cleanly
+     (otherwise margin-left:auto shoves "Versions" to the right edge in the column). */
+  .nav-main { margin-left: 0; }
+  .nav-main .nav-versions { margin-left: 0; }
 }
 
 .wrap { max-width: 1140px; margin: 0 auto; padding: 1.5rem 1rem; }
