@@ -10,7 +10,8 @@ import type { Document } from '@totolo-search/core';
 //   /robots.txt      keep crawlers out of the versioned archives
 // The search SPA lives at /search/. Styling matches the app (framework-free, responsive).
 
-const REPO_URL = 'https://github.com/theme-ontology/totolo-search-web';
+// Nav GitHub link points at the content repo (the ontology itself), not this app's repo.
+const REPO_URL = 'https://github.com/theme-ontology/theming';
 
 // The per-doc "view on themeontology.org" link is shown for dev/uat builds but omitted
 // in production (where this site IS themeontology.org). Prod builds set HIDE_SOURCE_LINK=1.
