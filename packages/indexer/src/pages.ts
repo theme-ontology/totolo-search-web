@@ -488,7 +488,7 @@ function versionsPage(version: string): string {
       };
       var row = function (v, label, latest) {
         return '<div class="version-row"><span class="date">' + link(v.path || '#', label) + '</span>'
-          + badges(v, latest) + built(v, label) + downloads(v) + '</div>';
+          + built(v, label) + badges(v, latest) + downloads(v) + '</div>';
       };
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
