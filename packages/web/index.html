@@ -190,16 +190,21 @@
       color: #495057;               /* darkened = applied */
     }
 
-    /* Subtle background indicator while the semantic model loads */
+    /* Subtle background indicator while the semantic model loads — tucked into the top-right
+       corner so it stays out of the way. Transient and non-interactive (clicks pass through). */
     .semantic-loading {
       display: none;
+      position: fixed;
+      top: .5rem;
+      right: 1rem;
+      z-index: 50;
+      pointer-events: none;
       align-items: center;
-      gap: .4rem;
-      margin-top: .4rem;
-      font-size: .75rem;
+      gap: .35rem;
+      font-size: .72rem;
       color: #adb5bd;
     }
-    .semantic-loading.visible { display: flex; }
+    .semantic-loading.visible { display: inline-flex; }
     .semantic-spinner {
       width: 13px;
       height: 13px;

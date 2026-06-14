@@ -69,6 +69,13 @@ function words(s: string | undefined): number {
   return (s ?? '').trim().split(/\s+/).filter(Boolean).length;
 }
 
+// Small clipboard icon + a discrete button that copies the document name (handled by pages.js).
+const COPY_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+function copyBtn(name: string): string {
+  return `<button class="copy-name" type="button" data-copy="${esc(name)}" title="Copy name" aria-label="Copy name">${COPY_SVG}</button>`;
+}
+
 const PAGE_CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: system-ui, -apple-system, sans-serif; font-size: 15px; background: #f8f9fa; color: #212529; min-height: 100vh; }
@@ -192,6 +199,12 @@ ul.plain li { margin-bottom: .2rem; font-size: .85rem; }
 .refs a { font-size: .85rem; word-break: break-all; }
 .cap { color: #868e96; font-size: .8rem; }
 .doc-aside h2:first-child { margin-top: 0; }
+/* Discrete copy-the-document-name button next to the heading. */
+.copy-name { background: none; border: 0; padding: 0 .15rem; cursor: pointer; color: #ced4da; vertical-align: middle; line-height: 0; position: relative; }
+.copy-name svg { width: 15px; height: 15px; }
+.copy-name:hover { color: #495057; }
+.copy-name.copied { color: #2f9e44; }
+.copy-name.copied::after { content: "Copied"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 3px; font-size: .62rem; font-weight: 600; color: #2f9e44; background: #fff; padding: 0 .2rem; white-space: nowrap; }
 @media (min-width: 900px) {
   .doc-grid { grid-template-columns: minmax(0, 1fr) 280px; }
   .doc-aside { border-left: 1px solid #eef0f2; padding-left: 1.5rem; }
@@ -232,7 +245,16 @@ table.cols2 th:nth-child(2), table.cols2 td:nth-child(2) { width: 7em; }
 // overflow rows (pre-rendered HTML) from the sibling <slug>.json and appends them.
 const PAGES_JS = `
 document.addEventListener('click', function (e) {
-  var btn = e.target && e.target.closest ? e.target.closest('.expand-btn') : null;
+  var t = e.target;
+  var copy = t && t.closest ? t.closest('.copy-name') : null;
+  if (copy) {
+    var done = function () { copy.classList.add('copied'); setTimeout(function () { copy.classList.remove('copied'); }, 1200); };
+    var name = copy.getAttribute('data-copy') || '';
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(name).then(done, done); }
+    else { done(); }
+    return;
+  }
+  var btn = t && t.closest ? t.closest('.expand-btn') : null;
   if (!btn) return;
   var tbody = document.getElementById(btn.getAttribute('data-target'));
   if (!tbody) return;
@@ -654,7 +676,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     const slug = themeSlug.get(t.name);
     if (!slug) continue;
 
-    const headParts: string[] = [`<h1>${esc(t.name)} <span class="doc-type">theme</span></h1>`];
+    const headParts: string[] = [`<h1>${esc(t.name)} <span class="doc-type">theme</span>${copyBtn(t.name)}</h1>`];
     if (t.aliases && t.aliases.length > 0) headParts.push(`<p class="meta">also known as: ${t.aliases.map(esc).join(', ')}</p>`);
     if (t.description) headParts.push(`<p class="desc">${esc(t.description)}</p>`);
 
@@ -723,7 +745,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     if (!slug) return;
 
     const kind = isCollection ? 'collection' : 'story';
-    const headParts = [`<h1>${esc(s.title || s.name)} <span class="doc-type">${kind}</span></h1>`];
+    const headParts = [`<h1>${esc(s.title || s.name)} <span class="doc-type">${kind}</span>${copyBtn(s.name)}</h1>`];
     const authors = typeof s.authors === 'string' ? s.authors : (s.authors ?? []).join(', ');
     const metaBits = [s.title && s.title !== s.name ? s.name : '', s.date ?? '', authors].filter(Boolean);
     if (metaBits.length > 0) headParts.push(`<p class="meta">${metaBits.map(esc).join(' · ')}</p>`);
