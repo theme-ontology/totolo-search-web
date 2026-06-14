@@ -445,12 +445,15 @@ function versionsPage(version: string): string {
       if (!versions.length) { el.innerHTML = '<p class="muted" style="color:#868e96;">No version history available.</p>'; return; }
       var built = function (v) { return v.built ? '<span class="muted">' + new Date(v.built).toISOString().slice(0, 10) + '</span>' : ''; };
       var link = function (href, text) { var a = document.createElement('a'); a.href = href; a.textContent = text; return a.outerHTML; };
-      // Per-release dataset files, named/hosted as on themeontology.org/data.
-      var dl = function (tag, type) {
-        return '<a class="dl" href="https://data.themeontology.org/lto-' + tag + '-' + type + '.json" download>' + type + '</a>';
+      // Each version hosts its own dataset files at <path>{themes,stories,collections}.json;
+      // the download attribute names the saved file lto-<version>-<type>.json (as on /data).
+      var dl = function (v, type) {
+        var base = v.current ? '/' : (v.path || '/');
+        var id = v.tag || v.branch || 'lto';
+        return '<a class="dl" href="' + base + type + '.json" download="lto-' + id + '-' + type + '.json">' + type + '</a>';
       };
-      var downloads = function (tag) {
-        return '<span class="downloads">' + dl(tag, 'themes') + dl(tag, 'stories') + dl(tag, 'collections') + '</span>';
+      var downloads = function (v) {
+        return '<span class="downloads">' + dl(v, 'themes') + dl(v, 'stories') + dl(v, 'collections') + '</span>';
       };
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
@@ -459,7 +462,7 @@ function versionsPage(version: string): string {
         html += '<div class="version-branch">' + branch + '</div>';
         byBranch[branch].sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).forEach(function (v) {
           html += '<div class="version-row"><span class="date">' + link(v.current ? '/' : (v.path || '#'), v.date || 'unknown') + '</span>'
-            + (v.current ? '<span class="badge">current</span>' : '') + built(v) + '</div>';
+            + (v.current ? '<span class="badge">current</span>' : '') + built(v) + downloads(v) + '</div>';
         });
       });
       if (releases.length) {
@@ -467,7 +470,7 @@ function versionsPage(version: string): string {
         releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); }).forEach(function (v) {
           html += '<div class="version-row"><span class="date">' + link(v.current ? '/' : (v.path || '#'), v.tag || 'unknown') + '</span>'
             + (v.current ? '<span class="badge">current</span>' : '') + built(v)
-            + (v.tag ? downloads(v.tag) : '') + '</div>';
+            + downloads(v) + '</div>';
         });
       }
       el.innerHTML = html;
@@ -585,6 +588,13 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
   await writeFile(join(outDir, 'versions', 'index.html'), versionsPage(version), 'utf-8');
   await writeFile(join(outDir, 'robots.txt'),
     'User-agent: *\nDisallow: /main/\nDisallow: /versions/\n', 'utf-8');
+
+  // Per-version dataset files ({lto, <type>} shape, as on themeontology.org/data), hosted
+  // alongside this version's pages so any row on the versions page can offer downloads --
+  // not just releases. Each published version (root, /<tag>/, /<branch>/) carries its own.
+  await writeFile(join(outDir, 'themes.json'), JSON.stringify({ lto: raw.lto, themes: raw.themes ?? [] }), 'utf-8');
+  await writeFile(join(outDir, 'stories.json'), JSON.stringify({ lto: raw.lto, stories: raw.stories ?? [] }), 'utf-8');
+  await writeFile(join(outDir, 'collections.json'), JSON.stringify({ lto: raw.lto, collections: raw.collections ?? [] }), 'utf-8');
 
   try {
     const faviconSrc = resolve(dirname(fileURLToPath(import.meta.url)), '../../web/public/favicon.svg');
