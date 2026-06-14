@@ -135,10 +135,12 @@ footer a { color: #adb5bd; }
 .version-row .muted { color: #868e96; font-size: .82rem; }
 
 /* ── Detail (theme / story / collection) pages ────────────────────────────── */
-.doc { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; border-left: 3px solid transparent; padding: 1.25rem 1.4rem; }
-.doc.type-theme { border-left-color: #7048e8; }
-.doc.type-story { border-left-color: #0d6efd; }
-.doc.type-collection { border-left-color: #198754; }
+/* --doc-accent carries the per-type colour so it can be the left accent on wide
+   screens and a top bar on narrow ones (see the max-width:640px block). */
+.doc { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; --doc-accent: transparent; border-left: 3px solid var(--doc-accent); padding: 1.25rem 1.4rem; }
+.doc.type-theme { --doc-accent: #7048e8; }
+.doc.type-story { --doc-accent: #0d6efd; }
+.doc.type-collection { --doc-accent: #198754; }
 /* Secondary metadata floats in a sidebar beside the whole content (head + table),
    from the top. Stacks to a single column on narrow screens. */
 .doc-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem 1.75rem; align-items: start; }
@@ -175,7 +177,8 @@ ul.plain li { margin-bottom: .2rem; font-size: .85rem; }
    .doc-type badge + heading, so the coloured left accent isn't needed here. */
 @media (max-width: 640px) {
   .wrap { padding: 1rem .8rem; }
-  .doc { background: transparent; border: none; border-radius: 0; padding: 0; }
+  /* Flat, edge-to-edge — but keep the doc-type cue as a thin coloured bar on top. */
+  .doc { background: transparent; border: none; border-radius: 0; border-top: 3px solid var(--doc-accent); padding: .6rem 0 0; }
   .doc-head { padding-bottom: .75rem; }
   .doc-grid { gap: 1rem; }
   th, td { padding-left: .35rem; padding-right: .35rem; }
