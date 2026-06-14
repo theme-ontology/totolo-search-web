@@ -141,7 +141,9 @@ footer a { color: #adb5bd; }
 .version-branch { font-size: 1rem; font-weight: 600; margin: 1.1rem 0 .5rem; }
 .version-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: .75rem; padding: .5rem .25rem; border-bottom: 1px solid #e9ecef; font-size: .9rem; }
 .version-row .date { font-weight: 600; min-width: 6em; }
-.version-row .badge { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; background: #e7f5ff; color: #1971c2; padding: .1em .45em; border-radius: 3px; }
+.version-row .badge { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; padding: .1em .45em; border-radius: 3px; }
+.version-row .badge.current { background: #e7f5ff; color: #1971c2; }   /* the version you're viewing */
+.version-row .badge.latest { background: #ebfbee; color: #2f9e44; }    /* newest under its heading */
 .version-row .muted { color: #868e96; font-size: .82rem; }
 /* Per-release dataset downloads (themes/stories/collections JSON on data.themeontology.org). */
 .version-row .downloads { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: .65rem; }
@@ -453,35 +455,52 @@ function versionsPage(version: string): string {
     .then(function (data) {
       var versions = (data && data.versions) || [];
       if (!versions.length) { el.innerHTML = '<p class="muted" style="color:#868e96;">No version history available.</p>'; return; }
-      var built = function (v) { return v.built ? '<span class="muted">' + new Date(v.built).toISOString().slice(0, 10) + '</span>' : ''; };
+      // The version this page itself belongs to (root '/', '/vX/', '/<branch>/'): used to mark
+      // the row the reader is currently on as "current".
+      var here = location.pathname.replace(/versions\/?$/, '') || '/';
+      var hasPathMatch = versions.some(function (v) { return v.path === here; });
+      var isCurrent = function (v) {
+        // Prefer an exact path match; at the root (where releases live under /vX/) fall back to
+        // the manifest's current flag (the version mirrored to the site root).
+        return hasPathMatch ? v.path === here : (here === '/' && !!v.current);
+      };
+      // Build date, shown only when it differs from the row label (avoids "2026-06-14 2026-06-14").
+      var built = function (v, label) {
+        if (!v.built) return '';
+        var d = new Date(v.built).toISOString().slice(0, 10);
+        return d === label ? '' : '<span class="muted">' + d + '</span>';
+      };
+      var badges = function (v, latest) {
+        return (isCurrent(v) ? '<span class="badge current">current</span>' : '')
+          + (latest ? '<span class="badge latest">latest</span>' : '');
+      };
       var link = function (href, text) { var a = document.createElement('a'); a.href = href; a.textContent = text; return a.outerHTML; };
       // Each version hosts its own dataset files at <path>{themes,stories,collections}.json;
       // the download attribute names the saved file lto-<version>-<type>.json (as on /data).
       var dl = function (v, type) {
-        var base = v.current ? '/' : (v.path || '/');
+        var b = v.path || '/';
         var id = v.tag || v.branch || 'lto';
-        return '<a class="dl" href="' + base + type + '.json" download="lto-' + id + '-' + type + '.json">' + type + '</a>';
+        return '<a class="dl" href="' + b + type + '.json" download="lto-' + id + '-' + type + '.json">' + type + '</a>';
       };
       var downloads = function (v) {
         return '<span class="downloads">' + dl(v, 'themes') + dl(v, 'stories') + dl(v, 'collections') + '</span>';
+      };
+      var row = function (v, label, latest) {
+        return '<div class="version-row"><span class="date">' + link(v.path || '#', label) + '</span>'
+          + badges(v, latest) + built(v, label) + downloads(v) + '</div>';
       };
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
       var html = '';
       Object.keys(byBranch).sort().forEach(function (branch) {
         html += '<div class="version-branch">' + branch + '</div>';
-        byBranch[branch].sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).forEach(function (v) {
-          html += '<div class="version-row"><span class="date">' + link(v.current ? '/' : (v.path || '#'), v.date || 'unknown') + '</span>'
-            + (v.current ? '<span class="badge">current</span>' : '') + built(v) + downloads(v) + '</div>';
-        });
+        byBranch[branch].sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })
+          .forEach(function (v, i) { html += row(v, v.date || 'unknown', i === 0); });
       });
       if (releases.length) {
         html += '<div class="version-branch">releases</div>';
-        releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); }).forEach(function (v) {
-          html += '<div class="version-row"><span class="date">' + link(v.current ? '/' : (v.path || '#'), v.tag || 'unknown') + '</span>'
-            + built(v) + (v.current ? '<span class="badge">current</span>' : '')
-            + downloads(v) + '</div>';
-        });
+        releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); })
+          .forEach(function (v, i) { html += row(v, v.tag || 'unknown', i === 0); });
       }
       el.innerHTML = html;
     })
