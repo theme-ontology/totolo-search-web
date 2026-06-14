@@ -150,6 +150,10 @@ footer a { color: #adb5bd; }
 .version-row .dl { font-size: .8rem; color: #1971c2; text-decoration: none; white-space: nowrap; }
 .version-row .dl::before { content: "\\2193\\00a0"; color: #adb5bd; }
 .version-row .dl:hover { text-decoration: underline; }
+/* GitHub source links on the branch heading / release tag (inherit text style + ↗ mark). */
+.version-branch a, .version-row .date a { color: inherit; text-decoration: none; }
+.version-branch a:hover, .version-row .date a:hover { text-decoration: underline; }
+.versions-list .ext-mark { font-size: .8em; color: #adb5bd; }
 
 /* ── Detail (theme / story / collection) pages ────────────────────────────── */
 /* --doc-accent carries the per-type colour so it can be the left accent on wide
@@ -475,7 +479,13 @@ function versionsPage(version: string): string {
         return (isCurrent(v) ? '<span class="badge current">current</span>' : '')
           + (latest ? '<span class="badge latest">latest</span>' : '');
       };
-      var link = function (href, text) { var a = document.createElement('a'); a.href = href; a.textContent = text; return a.outerHTML; };
+      // External link to the source on GitHub, with the ↗ external-site mark: a release tag
+      // links to its release page; a branch heading links to the branch tree.
+      var REPO = 'https://github.com/theme-ontology/theming';
+      var ext = function (href, text) {
+        return '<a href="' + href + '" target="_blank" rel="noopener">' + text
+          + ' <span class="ext-mark" aria-hidden="true">↗</span></a>';
+      };
       // Each version hosts its own dataset files at <path>{themes,stories,collections}.json;
       // the download attribute names the saved file lto-<version>-<type>.json (as on /data).
       var dl = function (v, type) {
@@ -486,24 +496,26 @@ function versionsPage(version: string): string {
       var downloads = function (v) {
         return '<span class="downloads">' + dl(v, 'themes') + dl(v, 'stories') + dl(v, 'collections') + '</span>';
       };
-      // Branch rows are labelled by their build date; release rows by tag, with the build date alongside.
-      var row = function (v, label, latest, showDate) {
-        return '<div class="version-row"><span class="date">' + link(v.path || '#', label) + '</span>'
-          + (showDate ? '<span class="muted">' + ymd(v) + '</span>' : '')
-          + badges(v, latest) + downloads(v) + '</div>';
-      };
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
       var html = '';
+      // Branches: the heading links to the GitHub branch; each row shows its last-change date.
       Object.keys(byBranch).sort().forEach(function (branch) {
-        html += '<div class="version-branch">' + branch + '</div>';
-        byBranch[branch].sort(function (a, b) { return (b.built || '').localeCompare(a.built || ''); })
-          .forEach(function (v, i) { html += row(v, ymd(v), i === 0, false); });
+        html += '<div class="version-branch">' + ext(REPO + '/tree/' + branch, branch) + '</div>';
+        byBranch[branch].sort(function (a, b) { return (b.date || b.built || '').localeCompare(a.date || a.built || ''); })
+          .forEach(function (v, i) {
+            html += '<div class="version-row"><span class="date">' + ymd(v) + '</span>'
+              + badges(v, i === 0) + downloads(v) + '</div>';
+          });
       });
+      // Releases: the tag links to the GitHub release page; the release date sits alongside.
       if (releases.length) {
         html += '<div class="version-branch">releases</div>';
         releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); })
-          .forEach(function (v, i) { html += row(v, v.tag || 'unknown', i === 0, true); });
+          .forEach(function (v, i) {
+            html += '<div class="version-row"><span class="date">' + ext(REPO + '/releases/tag/' + v.tag, v.tag) + '</span>'
+              + '<span class="muted">' + ymd(v) + '</span>' + badges(v, i === 0) + downloads(v) + '</div>';
+          });
       }
       el.innerHTML = html;
     })
