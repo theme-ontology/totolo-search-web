@@ -457,7 +457,8 @@ function versionsPage(version: string): string {
       if (!versions.length) { el.innerHTML = '<p class="muted" style="color:#868e96;">No version history available.</p>'; return; }
       // The version this page itself belongs to (root '/', '/vX/', '/<branch>/'): used to mark
       // the row the reader is currently on as "current".
-      var here = location.pathname.replace(/versions\/?$/, '') || '/';
+      var pn = location.pathname, vi = pn.lastIndexOf('versions');
+      var here = (vi > 0 ? pn.slice(0, vi) : '/') || '/';
       var hasPathMatch = versions.some(function (v) { return v.path === here; });
       var isCurrent = function (v) {
         // Prefer an exact path match; at the root (where releases live under /vX/) fall back to
