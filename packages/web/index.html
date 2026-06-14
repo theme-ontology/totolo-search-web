@@ -20,7 +20,7 @@
       min-height: 100vh;
     }
 
-    #app { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem; }
+    #app { max-width: 860px; margin: 0 auto; padding: 1.5rem 1rem; position: relative; }
 
     /* Top nav — kept in sync with packages/indexer/src/pages.ts (framework-free) */
     .nav { background: #fff; border-bottom: 1px solid #dee2e6; }
@@ -191,13 +191,14 @@
     }
 
     /* Subtle background indicator while the semantic model loads — tucked into the top-right
-       corner so it stays out of the way. Transient and non-interactive (clicks pass through). */
+       of the content area, below the nav bar, so it stays out of the way. Transient and
+       non-interactive (clicks pass through), anchored to #app so it never overlaps the nav. */
     .semantic-loading {
       display: none;
-      position: fixed;
-      top: .5rem;
+      position: absolute;
+      top: 1.5rem;
       right: 1rem;
-      z-index: 50;
+      z-index: 5;
       pointer-events: none;
       align-items: center;
       gap: .35rem;
