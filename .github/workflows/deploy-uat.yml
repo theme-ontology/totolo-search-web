@@ -139,6 +139,8 @@ jobs:
               data = {'versions': []}
           vs = [v for v in data.get('versions', []) if not (v.get('branch')==branch and v.get('date')==month)]
           for v in vs:                      # past snapshots: not current, link to their /<branch>/<month>/
+              if not v.get('branch'):       # leave release / non-branch entries untouched
+                  continue
               v['current'] = False
               v['path'] = f"/{v['branch']}/{v['date']}/"
           vs.append({'branch': branch, 'date': month, 'path': '/', 'current': True,
