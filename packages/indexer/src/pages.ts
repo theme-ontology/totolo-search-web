@@ -129,10 +129,15 @@ footer a { color: #adb5bd; }
 /* ── Versions page ────────────────────────────────────────────────────────── */
 .versions-list { max-width: 720px; }
 .version-branch { font-size: 1rem; font-weight: 600; margin: 1.1rem 0 .5rem; }
-.version-row { display: flex; align-items: baseline; gap: .75rem; padding: .5rem .25rem; border-bottom: 1px solid #e9ecef; font-size: .9rem; }
+.version-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: .75rem; padding: .5rem .25rem; border-bottom: 1px solid #e9ecef; font-size: .9rem; }
 .version-row .date { font-weight: 600; min-width: 6em; }
 .version-row .badge { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; background: #e7f5ff; color: #1971c2; padding: .1em .45em; border-radius: 3px; }
 .version-row .muted { color: #868e96; font-size: .82rem; }
+/* Per-release dataset downloads (themes/stories/collections JSON on data.themeontology.org). */
+.version-row .downloads { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: .65rem; }
+.version-row .dl { font-size: .8rem; color: #1971c2; text-decoration: none; white-space: nowrap; }
+.version-row .dl::before { content: "\\2193\\00a0"; color: #adb5bd; }
+.version-row .dl:hover { text-decoration: underline; }
 
 /* ── Detail (theme / story / collection) pages ────────────────────────────── */
 /* --doc-accent carries the per-type colour so it can be the left accent on wide
@@ -440,6 +445,13 @@ function versionsPage(version: string): string {
       if (!versions.length) { el.innerHTML = '<p class="muted" style="color:#868e96;">No version history available.</p>'; return; }
       var built = function (v) { return v.built ? '<span class="muted">' + new Date(v.built).toISOString().slice(0, 10) + '</span>' : ''; };
       var link = function (href, text) { var a = document.createElement('a'); a.href = href; a.textContent = text; return a.outerHTML; };
+      // Per-release dataset files, named/hosted as on themeontology.org/data.
+      var dl = function (tag, type) {
+        return '<a class="dl" href="https://data.themeontology.org/lto-' + tag + '-' + type + '.json" download>' + type + '</a>';
+      };
+      var downloads = function (tag) {
+        return '<span class="downloads">' + dl(tag, 'themes') + dl(tag, 'stories') + dl(tag, 'collections') + '</span>';
+      };
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
       var html = '';
@@ -454,7 +466,8 @@ function versionsPage(version: string): string {
         html += '<div class="version-branch">releases</div>';
         releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); }).forEach(function (v) {
           html += '<div class="version-row"><span class="date">' + link(v.current ? '/' : (v.path || '#'), v.tag || 'unknown') + '</span>'
-            + (v.current ? '<span class="badge">current</span>' : '') + built(v) + '</div>';
+            + (v.current ? '<span class="badge">current</span>' : '') + built(v)
+            + (v.tag ? downloads(v.tag) : '') + '</div>';
         });
       }
       el.innerHTML = html;
