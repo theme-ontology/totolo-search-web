@@ -169,6 +169,18 @@ ul.plain li { margin-bottom: .2rem; font-size: .85rem; }
   .doc-grid { grid-template-columns: minmax(0, 1fr) 280px; }
   .doc-aside { border-left: 1px solid #eef0f2; padding-left: 1.5rem; }
 }
+/* Narrow screens (phones): drop the card chrome (border, radius, inner padding,
+   white fill) so the content runs nearly edge-to-edge on the page background
+   instead of in a boxed, double-padded column. The type is still signalled by the
+   .doc-type badge + heading, so the coloured left accent isn't needed here. */
+@media (max-width: 640px) {
+  .wrap { padding: 1rem .8rem; }
+  .doc { background: transparent; border: none; border-radius: 0; padding: 0; }
+  .doc-head { padding-bottom: .75rem; }
+  .doc-grid { gap: 1rem; }
+  th, td { padding-left: .35rem; padding-right: .35rem; }
+  th:first-child, td:first-child { width: 34%; }
+}
 
 /* table-layout:fixed skips the per-cell measurement pass that makes big tables
    (some theme pages have 1000+ rows) slow; content-visibility lets the browser skip
