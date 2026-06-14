@@ -12,7 +12,7 @@ import {
 } from './cache.js';
 import { createSearchEngine } from './search.js';
 import type { Timings, ResultsPhase } from './search.js';
-import { renderResults, renderPhases, renderProgress, setStatus, setPageLinks } from './ui.js';
+import { renderResults, renderPhases, setStatus, setPageLinks } from './ui.js';
 import type { WorkerDoc } from './worker-types.js';
 
 let DEBUG = new URLSearchParams(location.search).has('debug');
@@ -140,6 +140,14 @@ function setOverallProgress(pct: number) {
   }
 }
 
+// Single loading indicator: one overall bar plus a high-level line naming the most
+// time-consuming thing in flight, with the aggregate percentage. (Replaces the old
+// second per-file bar, which double-reported the same download.)
+function loadProgress(label: string, pct: number) {
+  setOverallProgress(pct);
+  status(pct > 0 && pct < 100 ? `${label}… ${pct}%` : `${label}…`);
+}
+
 // Subtle background indicator. Two things can load in the background: the title
 // semantic index + models, and (lazily) the annotation index. The indicator stays
 // visible while either is in flight; title progress aggregates its embeddings + all
@@ -148,6 +156,9 @@ const semFiles = new Map<string, { loaded: number; total: number }>();
 let annProgress = { loaded: 0, total: 0 };
 let titleLoading = false;
 let annLoading = false;
+// Monotonic guards so the background indicator only ever moves forward (per phase).
+let titleMaxPct = 0;
+let annMaxPct = 0;
 
 function pct(loaded: number, total: number): number {
   return total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0; // 100% reserved for ready
@@ -158,11 +169,20 @@ function renderSemanticIndicator() {
   if (titleLoading) {
     let l = 0;
     let t = 0;
-    for (const v of semFiles.values()) { l += v.loaded; t += v.total; }
-    const p = pct(l, t);
+    let hasModel = false;
+    for (const [k, v] of semFiles) { l += v.loaded; t += v.total; if (k !== 'embeddings.bin') hasModel = true; }
+    let p = pct(l, t);
+    // The embeddings download (~1/3 of the work) finishes before the model files
+    // register, so on its own it would race to ~99% and then snap back once the
+    // larger model inflates the denominator. Hold the pre-model phase to a fraction
+    // of the bar, then take the running max so the indicator never moves backward.
+    if (!hasModel) p = Math.min(p, 35);
+    p = Math.max(titleMaxPct, p);
+    titleMaxPct = p;
     semLoadingText.textContent = p > 0 ? `Loading semantic search… ${p}%` : 'Loading semantic search…';
   } else if (annLoading) {
-    const p = pct(annProgress.loaded, annProgress.total);
+    let p = Math.max(annMaxPct, pct(annProgress.loaded, annProgress.total));
+    annMaxPct = p;
     semLoadingText.textContent = p > 0 ? `Loading annotation search… ${p}%` : 'Loading annotation search…';
   }
 }
@@ -273,32 +293,26 @@ interface KeywordLoad {
 // Loads only what keyword search needs (index + corpus); the big progress bar
 // covers this phase since the user can't search until it finishes.
 async function loadKeyword(): Promise<KeywordLoad> {
-  setOverallProgress(0);
-  status('Fetching index manifest…');
+  loadProgress('Fetching index manifest', 2);
   const manifest = await loadManifest();
 
   const useCache = (await getCachedVersionKey()) === manifest.version_key;
   const sizes: Record<string, number> = {};
 
-  setOverallProgress(8);
-  status('Loading search index…');
+  loadProgress('Loading search index', 8);
   const miniSearchJson = await loadArtifact(manifest, 'minisearch.json', true, useCache, sizes, (loaded, total) => {
-    renderProgress(progressEl, loaded, total, 'Downloading search index');
-    setOverallProgress(8 + Math.round((loaded / Math.max(total, 1)) * 42));
+    loadProgress('Loading search index', 8 + Math.round((loaded / Math.max(total, 1)) * 42));
   }) as string;
 
-  setOverallProgress(50);
-  status('Loading documents…');
+  loadProgress('Loading documents', 50);
   const corpusJson = await loadArtifact(manifest, 'corpus.json', true, useCache, sizes, (loaded, total) => {
-    renderProgress(progressEl, loaded, total, 'Downloading documents');
-    setOverallProgress(50 + Math.round((loaded / Math.max(total, 1)) * 42));
+    loadProgress('Loading documents', 50 + Math.round((loaded / Math.max(total, 1)) * 42));
   }) as string;
 
   status('Initializing…');
   const miniSearch = MiniSearch.loadJSON<Document>(miniSearchJson, getMiniSearchOptions());
   const corpus = JSON.parse(corpusJson) as Document[];
 
-  progressEl.innerHTML = '';
   setOverallProgress(100);
   return { manifest, miniSearch, corpus, useCache, sizes };
 }
@@ -475,6 +489,7 @@ async function main() {
     getTypeFilter: () => typeFilter,
     respawnWorker: () => {
       titleLoading = true;
+      titleMaxPct = 0;
       renderSemanticIndicator();
       semanticReady = false;
       searchBtn.disabled = true;
@@ -496,6 +511,7 @@ async function main() {
   // keyword search is already usable.
   async function loadSemantic(): Promise<void> {
     titleLoading = true;
+    titleMaxPct = 0;
     renderSemanticIndicator();
     try {
       embeddingsBuffer = await loadArtifact(manifest, 'embeddings.bin', false, useCache, sizes,
@@ -523,6 +539,7 @@ async function main() {
     if (annotationState !== 'idle' || !engine) return;
     annotationState = 'loading';
     annLoading = true;
+    annMaxPct = 0;
     renderSemanticIndicator();
     try {
       const buf = await loadArtifact(manifest, 'embeddings-annotations.bin', false, useCache, sizes,
