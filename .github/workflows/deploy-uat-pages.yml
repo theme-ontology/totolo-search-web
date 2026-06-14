@@ -1,11 +1,15 @@
 name: Deploy UAT pages (fast, no index rebuild)
 
 # Fast lane for static-page / CSS changes (packages/indexer/src/pages.ts). It re-renders the
-# front / theme / story / versions pages + pages.css from the corpus ALREADY deployed in the
-# UAT bucket, and uploads just those files. Skips corpus generation, embeddings, model
-# download, and the search-app build -- ~1-2 min vs the full deploy-uat (~8 min). The index
-# artifacts (minisearch.json, embeddings*.bin, latest.json, corpus.json) and /models/ and
-# /search/ in the bucket are untouched (no --delete; dist-data only holds page files here).
+# front / theme / story / versions pages + pages.css and uploads just those files. Skips the
+# slow parts of a full deploy -- title/annotation embeddings, model download, and the
+# search-app (Vite) build -- so it runs in ~2 min vs ~8. The index artifacts
+# (minisearch.json, embeddings*.bin, latest.json, corpus.json) and /models/ and /search/ in
+# the bucket are untouched (no --delete; dist-data only holds page files here).
+#
+# Page rendering needs the RAW corpus ({themes,stories,collections}); the corpus.json in the
+# bucket is the transformed Document[] for the search app, so we regenerate the raw corpus
+# with makejson rather than reuse the deployed one.
 #
 # Auto-runs when only pages.ts changes on main, and can be dispatched manually. Anything that
 # touches the index/search app still goes through the full deploy-uat.yml.
@@ -42,17 +46,22 @@ jobs:
           cache: npm
       - run: npm ci
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install totolo
+
+      - name: Generate raw corpus (latest ontology)
+        run: python -m totolo.util.makejson -tsc > corpus.json
+
+      - name: Re-render pages (no index rebuild)
+        run: npm run pages   # tsx build.ts corpus.json dist-data --pages-only
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Fetch the corpus already deployed to UAT
-        run: aws s3 cp "s3://${{ env.S3_BUCKET }}/corpus.json" corpus.json
-
-      - name: Re-render pages (no index rebuild)
-        run: npm run pages   # tsx build.ts corpus.json dist-data --pages-only
 
       - name: Upload page files only
         # dist-data holds only page output here (no index artifacts), so a plain sync
