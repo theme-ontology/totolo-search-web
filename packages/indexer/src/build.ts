@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, readFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import MiniSearch from 'minisearch';
@@ -22,6 +22,11 @@ const indexPrefix = prefixFlag >= 0 && args[prefixFlag + 1] ? args[prefixFlag + 
 // existing index + embedding artifacts. Skips the slow embedding step — for fast
 // local iteration on page markup/styling.
 const pagesOnly = args.includes('--pages-only');
+// Path to the previously deployed latest.json. Embeddings (the slow step) depend only on
+// the corpus + model, so when those are unchanged vs this manifest we skip generating them
+// and reuse the deployed ones. Missing/mismatched -> full rebuild.
+const prevFlag = args.indexOf('--prev-manifest');
+const prevManifestPath = prevFlag >= 0 ? args[prevFlag + 1] : undefined;
 
 function sha256hex(data: Buffer | string): string {
   return createHash('sha256').update(data).digest('hex');
@@ -67,32 +72,67 @@ async function main() {
   // title/date/authors for stories), not descriptions. This keeps build time low and
   // matches title-centric queries well; semantic recall on description text relies on
   // the cross-encoder rerank stage instead. See README "Design notes" before changing.
-  console.log('Generating title embeddings...');
+  const modelVersion = 'all-minilm-l6-v2';
+  const corpusHash = sha256hex(corpusBuf);
+  const miniSearchHash = sha256hex(miniSearchBuf);
   const embeddableDocs = docs.filter(d => d.doc_type !== 'story-theme');
-  const titles = embeddableDocs.map(d => d.search_title);
-  const embeddings = await embedTexts(titles);
-  const embeddingsBuf = packEmbeddings(embeddings, embeddableDocs.length);
-  await writeFile(join(outDir, 'embeddings.bin'), embeddingsBuf);
-  console.log(`  embeddings.bin: ${(embeddingsBuf.length / 1024).toFixed(0)} KB`);
-
-  // Annotation index: story-theme annotations, embedded on theme name + motivation.
-  // Downloaded lazily by the web app (large), only when the Annotations filter is used.
-  console.log('Generating annotation embeddings...');
   const annotationDocs = docs.filter(d => d.doc_type === 'story-theme');
-  const annTexts = annotationDocs.map(d => `${d.title}. ${d.search_body}`);
-  const annEmbeddings = await embedTexts(annTexts);
-  const annEmbeddingsBuf = packEmbeddings(annEmbeddings, annotationDocs.length);
-  await writeFile(join(outDir, 'embeddings-annotations.bin'), annEmbeddingsBuf);
-  console.log(`  embeddings-annotations.bin: ${(annEmbeddingsBuf.length / 1024).toFixed(0)} KB`);
+
+  // Reuse the deployed embeddings if the corpus and model are unchanged — this is what makes
+  // re-deploys (e.g. for a page/design change) skip the minutes-long embedding step. Their
+  // hashes carry over verbatim, so the version_key stays identical and clients keep their cache.
+  let prevManifest: Manifest | undefined;
+  if (prevManifestPath) {
+    try {
+      prevManifest = JSON.parse(await readFile(prevManifestPath, 'utf-8')) as Manifest;
+    } catch {
+      console.log('No usable previous manifest found; doing a full build.');
+    }
+  }
+  const reuse =
+    !!prevManifest &&
+    prevManifest.model_version === modelVersion &&
+    prevManifest.hashes?.['corpus.json'] === corpusHash &&
+    !!prevManifest.hashes?.['embeddings.bin'] &&
+    !!prevManifest.hashes?.['embeddings-annotations.bin'];
+
+  let embeddingsHash: string;
+  let annEmbeddingsHash: string;
+  if (reuse) {
+    console.log('Corpus + model unchanged — reusing deployed embeddings (skipping generation).');
+    embeddingsHash = prevManifest!.hashes['embeddings.bin'];
+    annEmbeddingsHash = prevManifest!.hashes['embeddings-annotations.bin'];
+    // Marker so the deploy step knows the embedding files were NOT regenerated and must be
+    // preserved (not deleted) on the already-deployed target.
+    await writeFile(join(outDir, '.reused-embeddings'), '');
+  } else {
+    console.log('Generating title embeddings...');
+    const titles = embeddableDocs.map(d => d.search_title);
+    const embeddings = await embedTexts(titles);
+    const embeddingsBuf = packEmbeddings(embeddings, embeddableDocs.length);
+    await writeFile(join(outDir, 'embeddings.bin'), embeddingsBuf);
+    console.log(`  embeddings.bin: ${(embeddingsBuf.length / 1024).toFixed(0)} KB`);
+
+    // Annotation index: story-theme annotations, embedded on theme name + motivation.
+    // Downloaded lazily by the web app (large), only when the Annotations filter is used.
+    console.log('Generating annotation embeddings...');
+    const annTexts = annotationDocs.map(d => `${d.title}. ${d.search_body}`);
+    const annEmbeddings = await embedTexts(annTexts);
+    const annEmbeddingsBuf = packEmbeddings(annEmbeddings, annotationDocs.length);
+    await writeFile(join(outDir, 'embeddings-annotations.bin'), annEmbeddingsBuf);
+    console.log(`  embeddings-annotations.bin: ${(annEmbeddingsBuf.length / 1024).toFixed(0)} KB`);
+
+    embeddingsHash = sha256hex(embeddingsBuf);
+    annEmbeddingsHash = sha256hex(annEmbeddingsBuf);
+  }
 
   // Build manifest
   const now = new Date().toISOString();
-  const modelVersion = 'all-minilm-l6-v2';
   const hashes = {
-    'minisearch.json': sha256hex(miniSearchBuf),
-    'corpus.json': sha256hex(corpusBuf),
-    'embeddings.bin': sha256hex(embeddingsBuf),
-    'embeddings-annotations.bin': sha256hex(annEmbeddingsBuf),
+    'minisearch.json': miniSearchHash,
+    'corpus.json': corpusHash,
+    'embeddings.bin': embeddingsHash,
+    'embeddings-annotations.bin': annEmbeddingsHash,
   };
   // Content-addressed version key (NOT date-based): identical data produces an
   // identical key, so a client keeps its cached artifacts across rebuilds/days and
