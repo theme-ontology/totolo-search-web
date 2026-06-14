@@ -152,12 +152,16 @@ footer a { color: #adb5bd; }
 .doc-type { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; padding: .12em .4em; background: #f1f3f5; border-radius: 3px; vertical-align: middle; }
 .meta { font-size: .85rem; color: #6c757d; font-style: italic; margin-bottom: .7rem; }
 .desc { font-size: .95rem; line-height: 1.6; color: #343a40; white-space: pre-line; max-width: 68ch; }
-/* Source link: discreet, outside the card, gray on the gray page background. */
-.doc-source { text-align: right; margin-bottom: .35rem; }
+/* Source link: discreet, outside the card, gray on the gray page background. Pulled up into
+   the wrap's top padding so showing it doesn't add a second block of whitespace above. */
+.doc-source { text-align: right; margin: -.6rem 0 .15rem; line-height: 1.2; }
 .ext-link { font-size: .78rem; color: #adb5bd; text-decoration: none; }
 .ext-link:hover { color: #6c757d; text-decoration: underline; }
 h2 { font-size: .9rem; font-weight: 600; color: #343a40; margin: 1.1rem 0 .4rem; }
 .lvl-summary { font-weight: 400; color: #868e96; font-size: .8rem; margin-left: .25rem; }
+/* Stand-alone light-grey summary above a table (the table's column headers already name it,
+   so no bold section heading is needed). */
+.tbl-summary { color: #868e96; font-size: .8rem; margin: 1.1rem 0 .4rem; }
 a.theme-link { color: #7048e8; text-decoration: none; }
 a.story-link { color: #0d6efd; text-decoration: none; }
 a.theme-link:hover, a.story-link:hover { text-decoration: underline; }
@@ -601,7 +605,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
 <td class="lvl">${esc(u.level)}</td>
 <td>${esc(u.motivation)}${u.capacity ? ` <span class="cap">[${esc(u.capacity)}]</span>` : ''}</td>
 </tr>`);
-      const heading = `<h2>Stories featuring this theme <span class="lvl-summary">${levelSummary(usages.map(u => u.level))}</span></h2>`;
+      const heading = `<p class="tbl-summary">${levelSummary(usages.map(u => u.level))}</p>`;
       const tbl = tableSection('tbl-stories', heading, ['Story', 'Level', 'Motivation'], rows, `${slug}.json`, 'stories');
       content.push(tbl.html);
       if (tbl.overflow) overflow['stories'] = tbl.overflow;
@@ -669,7 +673,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
 <td class="lvl">${esc(a.level ?? '')}</td>
 <td>${esc(a.motivation ?? '')}${a.capacity ? ` <span class="cap">[${esc(a.capacity)}]</span>` : ''}</td>
 </tr>`);
-      const heading = `<h2>Themes <span class="lvl-summary">${levelSummary(annotations.map(a => a.level))}</span></h2>`;
+      const heading = `<p class="tbl-summary">${levelSummary(annotations.map(a => a.level))}</p>`;
       const tbl = tableSection('tbl-themes', heading, ['Theme', 'Level', 'Motivation'], rows, `${slug}.json`, 'themes');
       content.push(tbl.html);
       if (tbl.overflow) overflow['themes'] = tbl.overflow;
@@ -678,7 +682,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     const components = (s['component stories'] ?? []).slice().sort();
     if (components.length > 0) {
       const rows = components.map(name => `<tr><td>${storyLink(name)}</td><td class="lvl">${esc(storyDate.get(name) ?? '')}</td></tr>`);
-      const heading = `<h2>Component stories <span class="lvl-summary">${components.length} total</span></h2>`;
+      const heading = `<p class="tbl-summary">${components.length} component stories</p>`;
       const tbl = tableSection('tbl-components', heading, ['Story', 'Date'], rows, `${slug}.json`, 'components', 'cols2');
       content.push(tbl.html);
       if (tbl.overflow) overflow['components'] = tbl.overflow;
