@@ -52,7 +52,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Check out main's tip, not the triggering commit, so a push that doesn't itself change
+      # pages (e.g. build tooling) still deploys the LATEST pages and never clobbers a newer
+      # page change with a stale copy.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Compute snapshot prefix
         id: vars

@@ -40,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # always render the latest pages, not the triggering commit
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
