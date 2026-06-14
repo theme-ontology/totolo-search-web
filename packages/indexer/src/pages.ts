@@ -465,8 +465,12 @@ function versionsPage(version: string): string {
         // the manifest's current flag (the version mirrored to the site root).
         return hasPathMatch ? v.path === here : (here === '/' && !!v.current);
       };
-      // Full build date (YYYY-MM-DD, no time) for every entry.
-      var ymd = function (v) { return v.built ? new Date(v.built).toISOString().slice(0, 10) : (v.date || ''); };
+      // Meaningful date (YYYY-MM-DD): the release date / branch last-change date when known
+      // (v.date), else the build date.
+      var ymd = function (v) {
+        if (v.date) return String(v.date).slice(0, 10);
+        return v.built ? new Date(v.built).toISOString().slice(0, 10) : '';
+      };
       var badges = function (v, latest) {
         return (isCurrent(v) ? '<span class="badge current">current</span>' : '')
           + (latest ? '<span class="badge latest">latest</span>' : '');

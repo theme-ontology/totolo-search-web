@@ -137,13 +137,16 @@ jobs:
               data = json.loads(out)
           except Exception:
               data = {'versions': []}
-          vs = [v for v in data.get('versions', []) if not (v.get('branch')==branch and v.get('date')==month)]
-          for v in vs:                      # past snapshots: not current, link to their /<branch>/<month>/
-              if v.get('track') or not v.get('branch'):   # leave release/track (own-path) entries untouched
-                  continue
-              v['current'] = False
-              v['path'] = f"/{v['branch']}/{v['date']}/"
-          vs.append({'branch': branch, 'date': month, 'path': '/', 'current': True,
+          # Display date = the ontology's source timestamp (master's last commit), from the corpus.
+          try:
+              src = json.load(open('corpus.json')).get('lto', {}).get('timestamp', '')
+              src_date = src[:10] if src else month
+          except Exception:
+              src_date = month
+          # Maintain a single current root entry for the live master build; leave any other rows
+          # (release / branch entries) untouched. Monthly snapshots still go to S3 for rollback.
+          vs = [v for v in data.get('versions', []) if not (v.get('branch')==branch and v.get('path')=='/')]
+          vs.append({'branch': branch, 'date': src_date, 'path': '/', 'current': True,
                      'sha': sha[:7], 'built': datetime.datetime.utcnow().isoformat()+'Z'})
           json.dump({'versions': vs}, open('site/versions.json','w'), indent=2)
           PY
