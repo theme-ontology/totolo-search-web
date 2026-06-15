@@ -100,7 +100,11 @@
   // Ultimate-root colour categories (society carved out of the human world). Base HSL; child
   // roots get a small per-branch hue shift and lighten with depth. Real colours (not CSS vars)
   // because Cytoscape's canvas renderer can't resolve var(--…).
-  var CAT_BASE = { 'alternate reality': [262,60,56], 'the human world': [0,68,56], 'the natural world': [209,72,48], 'society': [131,42,40] };
+  var CAT_BASE = { 'alternate reality': [262,60,56], 'the human world': [0,68,56], 'the natural world': [209,72,48], 'society': [131,50,42] };
+  // Hue spread (degrees relative to the base) across a category's child roots. Some domains
+  // veer toward a neighbouring hue for more distinguishable shades: the human world red->orange,
+  // society green->yellow-green; alternate reality / the natural world stay symmetric.
+  var CAT_HUE = { 'alternate reality': [-40,40], 'the human world': [-6,46], 'the natural world': [-26,26], 'society': [-55,16] };
 
   var errEl = document.getElementById('err'), loadEl = document.getElementById('loading');
   function fail(msg) { loadEl.style.display = 'none'; errEl.style.display = 'flex'; errEl.textContent = msg; }
@@ -187,12 +191,14 @@
       var info = branchInfo(cat)[n] || { depth: 0, branch: null };
       var sibs = (childrenOf[cat] || []).slice().sort();
       var i = info.branch ? sibs.indexOf(info.branch) : -1;
-      // ~11° of hue per sibling branch (so many-child roots spread as widely as the natural
-      // world's), capped so a category's shades don't wander into another domain's hue.
-      var span = Math.min(11 * (sibs.length - 1), 80);
-      var hueOff = (sibs.length > 1 && i >= 0) ? ((i / (sibs.length - 1)) - 0.5) * span : 0;
+      // Map each child root across the category's hue range; deeper nodes within a branch
+      // lighten. The category root itself (no branch) keeps the base hue.
+      var rng = CAT_HUE[cat] || [-40, 40];
+      var t = (sibs.length > 1 && i >= 0) ? i / (sibs.length - 1) : 0.5;
+      var hueOff = (i >= 0) ? (rng[0] + (rng[1] - rng[0]) * t) : 0;
       var light = Math.min(base[2] + Math.min(info.depth, 6) * 4, base[2] + 24);
-      return 'hsl(' + Math.round(base[0] + hueOff) + ',' + base[1] + '%,' + light + '%)';
+      var h = (Math.round(base[0] + hueOff) % 360 + 360) % 360;
+      return 'hsl(' + h + ',' + base[1] + '%,' + light + '%)';
     }
 
     // ── Tree menu UI ──────────────────────────────────────────────────────────────
