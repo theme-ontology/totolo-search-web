@@ -149,10 +149,17 @@ function matchesType(docType: string, filter: string): boolean {
   return docType === filter;
 }
 
+// Smart-case (like ripgrep / Vim): match case-insensitively when the pattern is all lowercase,
+// but case-sensitively the moment it contains a literal uppercase letter. Escape sequences are
+// stripped before the test so regex tokens such as \D \W \S \b don't count as "uppercase".
+function isCaseSensitive(pattern: string): boolean {
+  return /[A-Z]/.test(pattern.replace(/\\./g, ''));
+}
+
 function regexSearch(pattern: string, typeFilter: string): RegexHit[] | null {
   let re: RegExp;
   try {
-    re = new RegExp(pattern, 'i');
+    re = new RegExp(pattern, isCaseSensitive(pattern) ? '' : 'i');
   } catch {
     return null;
   }
