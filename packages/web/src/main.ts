@@ -181,7 +181,7 @@ function renderSemanticIndicator() {
     titleMaxPct = p;
     semLoadingText.textContent = p > 0 ? `Loading semantic search… ${p}%` : 'Loading semantic search…';
   } else if (annLoading) {
-    let p = Math.max(annMaxPct, pct(annProgress.loaded, annProgress.total));
+    const p = Math.max(annMaxPct, pct(annProgress.loaded, annProgress.total));
     annMaxPct = p;
     semLoadingText.textContent = p > 0 ? `Loading annotation search… ${p}%` : 'Loading annotation search…';
   }
