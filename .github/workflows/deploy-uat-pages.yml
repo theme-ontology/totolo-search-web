@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['packages/indexer/src/pages.ts']
+    paths: ['packages/indexer/src/pages.ts', 'packages/indexer/src/themes-graph.html']
 
 permissions:
   contents: read

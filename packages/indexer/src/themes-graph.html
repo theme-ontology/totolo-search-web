@@ -7,8 +7,9 @@
 <title>Theme graph · Theme Ontology</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
+  /* Ultimate-root colours (society is carved out of "the human world" as a special case). */
   :root {
-    --r0:#7048e8; --r1:#1971c2; --r2:#e8590c; --r3:#c2255c; --r4:#2f9e44; --shared:#f08c00;
+    --c-alt:#7048e8; --c-human:#1971c2; --c-nat:#2f9e44; --c-soc:#c2255c; --shared:#f08c00;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -17,17 +18,32 @@
   header.bar h1 { font-size: 1rem; font-weight: 700; margin: 0; letter-spacing: -.2px; }
   header.bar a.home { color: #495057; text-decoration: none; font-size: .85rem; }
   header.bar a.home:hover { text-decoration: underline; }
-  .tabs { display: flex; gap: .35rem; flex-wrap: wrap; }
-  .tab { font-size: .8rem; padding: .25rem .6rem; border: 1px solid #ced4da; border-radius: 999px; background: #fff; cursor: pointer; color: #495057; display: inline-flex; align-items: center; gap: .4rem; }
-  .tab .dot { width: 9px; height: 9px; border-radius: 50%; }
-  .tab.active { color: #111; font-weight: 600; border-color: #868e96; background: #f8f9fa; }
   .spacer { margin-left: auto; }
   .btn { font-size: .78rem; padding: .25rem .6rem; border: 1px solid #ced4da; border-radius: 6px; background: #fff; cursor: pointer; color: #495057; }
   .btn:hover { background: #f1f3f5; }
+  .legend { font-size: .72rem; color: #868e96; display: inline-flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: .3rem; }
+  .legend .sw { width: 10px; height: 10px; border-radius: 50%; }
+  .legend .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--shared); background: #fff; }
+
+  .body { flex: 1; min-height: 0; display: flex; }
+  /* Root tree menu */
+  nav.tree { width: 230px; flex: none; border-right: 1px solid #dee2e6; background: #fff; overflow: auto; padding: .5rem 0; font-size: .82rem; }
+  nav.tree ul { list-style: none; margin: 0; padding: 0; }
+  nav.tree li > .row { display: flex; align-items: center; gap: .4rem; padding: .2rem .6rem; cursor: pointer; border-radius: 4px; white-space: nowrap; }
+  nav.tree li > .row:hover { background: #f1f3f5; }
+  nav.tree .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  nav.tree .grp > .row { font-weight: 600; color: #343a40; }
+  nav.tree .leaf.active > .row { background: #e7f5ff; color: #1971c2; font-weight: 600; }
+  nav.tree .caret { width: .8em; display: inline-block; color: #adb5bd; transition: transform .15s; }
+  nav.tree li.collapsed > ul { display: none; }
+  nav.tree li.collapsed > .row .caret { transform: rotate(-90deg); }
+  nav.tree ul ul { padding-left: .85rem; }
+
   .stage { position: relative; flex: 1; min-height: 0; }
   #cy { position: absolute; inset: 0; background: #fbfcfd; }
   #hint { position: absolute; left: .8rem; bottom: .6rem; font-size: .72rem; color: #adb5bd; background: rgba(255,255,255,.8); padding: .15rem .4rem; border-radius: 4px; pointer-events: none; }
-  /* Side panel */
+  #crumbs { position: absolute; left: .8rem; top: .6rem; font-size: .78rem; color: #495057; background: rgba(255,255,255,.85); padding: .2rem .5rem; border-radius: 4px; }
   #panel { position: absolute; top: .6rem; right: .6rem; width: 300px; max-height: calc(100% - 1.2rem); overflow: auto; background: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.08); padding: .8rem .9rem; font-size: .85rem; display: none; }
   #panel.open { display: block; }
   #panel h2 { font-size: .95rem; margin: 0 .9rem 0 0; }
@@ -39,15 +55,12 @@
   #panel a { color: #1971c2; text-decoration: none; }
   #panel a:hover { text-decoration: underline; }
   #panel ul { margin: .2rem 0; padding-left: 1.1rem; }
-  #panel li { margin: .1rem 0; }
   .chip { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; padding: .15rem .5rem; border-radius: 999px; border: 1px solid #e9ecef; background: #f8f9fa; cursor: pointer; margin: .15rem .25rem .15rem 0; }
-  .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .chip .sw { width: 8px; height: 8px; border-radius: 50%; }
   .chip:hover { border-color: #adb5bd; }
   #panel .actions { margin-top: .8rem; display: flex; gap: .4rem; flex-wrap: wrap; }
   #err { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 2rem; text-align: center; color: #c92a2a; font-size: .9rem; }
   #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #868e96; font-size: .9rem; }
-  .legend { font-size: .72rem; color: #868e96; display: inline-flex; align-items: center; gap: .35rem; }
-  .legend .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--shared); background: #fff; }
 </style>
 <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
@@ -57,28 +70,38 @@
 <header class="bar">
   <h1>Theme graph</h1>
   <a class="home" href="../">&larr; site</a>
-  <div class="tabs" id="tabs"></div>
   <span class="spacer"></span>
-  <span class="legend"><span class="ring"></span> shared across roots</span>
+  <span class="legend">
+    <span><span class="sw" style="background:var(--c-alt)"></span>alternate reality</span>
+    <span><span class="sw" style="background:var(--c-human)"></span>the human world</span>
+    <span><span class="sw" style="background:var(--c-soc)"></span>society</span>
+    <span><span class="sw" style="background:var(--c-nat)"></span>the natural world</span>
+    <span><span class="ring"></span>shared</span>
+  </span>
   <button class="btn" id="reset">Reset view</button>
 </header>
-<div class="stage">
-  <div id="cy"></div>
-  <div id="loading">Loading theme graph…</div>
-  <div id="err"></div>
-  <div id="hint">Click a node to focus its subtree and see folded leaves · scroll to zoom · drag to pan</div>
-  <aside id="panel"></aside>
+<div class="body">
+  <nav class="tree" id="tree"></nav>
+  <div class="stage">
+    <div id="cy"></div>
+    <div id="loading">Loading theme graph…</div>
+    <div id="err"></div>
+    <div id="crumbs"></div>
+    <div id="hint">Pick a root at left · click a node to focus its subtree &amp; see folded leaves · scroll to zoom · drag to pan</div>
+    <aside id="panel"></aside>
+  </div>
 </div>
 <script>
 (function () {
-  var ROOT_COLORS = ['var(--r0)','var(--r1)','var(--r2)','var(--r3)','var(--r4)'];
-  var SPLIT = 'the human world'; // shown split into its children as top-level roots
-  var errEl = document.getElementById('err');
-  var loadEl = document.getElementById('loading');
-  function fail(msg) { loadEl.style.display = 'none'; errEl.style.display = 'flex'; errEl.textContent = msg; }
+  // Nodes shown SPLIT into their children (their children become navigable roots instead of them).
+  var SPLIT = ['the human world', 'alternate reality', 'personal human experience'];
+  // Ultimate-root colour categories. "society" is special-cased out of "the human world".
+  var CAT_COLOR = { 'alternate reality': 'var(--c-alt)', 'the human world': 'var(--c-human)', 'the natural world': 'var(--c-nat)', 'society': 'var(--c-soc)' };
 
+  var errEl = document.getElementById('err'), loadEl = document.getElementById('loading');
+  function fail(msg) { loadEl.style.display = 'none'; errEl.style.display = 'flex'; errEl.textContent = msg; }
   if (!window.cytoscape) { fail('Could not load the graph library (cytoscape).'); return; }
-  try { cytoscape.use(window.cytoscapeDagre); } catch (e) { /* dagre layout optional; falls back below */ }
+  try { cytoscape.use(window.cytoscapeDagre); } catch (e) {}
 
   fetch('../themes-graph.json', { cache: 'no-cache' })
     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
@@ -96,79 +119,111 @@
       (t.parents || []).forEach(function (p) { (childrenOf[p] = childrenOf[p] || []).push(t.name); });
     });
     var isLeaf = function (n) { return !(childrenOf[n] && childrenOf[n].length); };
+    var splitSet = {}; SPLIT.forEach(function (s) { splitSet[s] = true; });
 
-    // Display roots: top-level themes, with SPLIT expanded into its children.
-    var topRoots = themes.filter(function (t) { return !(parentsOf[t.name] || []).length; }).map(function (t) { return t.name; });
-    var roots = [];
-    topRoots.forEach(function (r) {
-      if (r === SPLIT && (childrenOf[r] || []).length) childrenOf[r].forEach(function (c) { roots.push(c); });
-      else roots.push(r);
-    });
-
-    // Membership: BFS distance from each root over the children relation. A node may belong to
-    // several roots (the DAG's cross-links); its colour is its nearest root, ties by root order.
-    var memberDist = {}; // name -> { rootName: distance }
-    roots.forEach(function (root) {
-      var seen = {}; seen[root] = 0; var q = [root];
-      while (q.length) {
-        var n = q.shift();
-        (childrenOf[n] || []).forEach(function (c) { if (!(c in seen)) { seen[c] = seen[n] + 1; q.push(c); } });
-      }
-      Object.keys(seen).forEach(function (n) { (memberDist[n] = memberDist[n] || {})[root] = seen[n]; });
-    });
-    function rootsOf(n) { return roots.filter(function (r) { return memberDist[n] && (r in memberDist[n]); }); }
-    function primaryRoot(n) {
-      var rs = rootsOf(n), best = null, bd = Infinity;
-      rs.forEach(function (r) { var d = memberDist[n][r]; if (d < bd) { bd = d; best = r; } });
-      return best;
+    var descCache = {};
+    function descend(root) {
+      if (descCache[root]) return descCache[root];
+      var seen = {}; seen[root] = true; var q = [root];
+      while (q.length) { var n = q.shift(); (childrenOf[n] || []).forEach(function (c) { if (!seen[c]) { seen[c] = true; q.push(c); } }); }
+      return (descCache[root] = seen);
     }
-    var colorOf = {}; roots.forEach(function (r, i) { colorOf[r] = ROOT_COLORS[i % ROOT_COLORS.length]; });
 
-    // ── Tabs ──────────────────────────────────────────────────────────────────
-    var tabsEl = document.getElementById('tabs');
-    var active = roots[0];
-    roots.forEach(function (r) {
-      var b = document.createElement('button');
-      b.className = 'tab'; b.dataset.root = r;
-      b.innerHTML = '<span class="dot" style="background:' + colorOf[r] + '"></span>' + escapeHtml(r);
-      b.addEventListener('click', function () { selectRoot(r); });
-      tabsEl.appendChild(b);
-    });
+    // ── Root tree (top roots, recursively expanding SPLIT nodes) ──────────────────
+    var topRoots = themes.filter(function (t) { return !(parentsOf[t.name] || []).length; }).map(function (t) { return t.name; });
+    function makeNode(name) {
+      var split = !!splitSet[name] && (childrenOf[name] || []).length > 0;
+      return { name: name, split: split, children: split ? (childrenOf[name] || []).slice().sort().map(makeNode) : [] };
+    }
+    var menu = topRoots.slice().sort().map(makeNode);
+    var navRoots = [];
+    (function collect(nodes) { nodes.forEach(function (n) { if (n.split) collect(n.children); else navRoots.push(n.name); }); })(menu);
+
+    // ── Ultimate-root colour category ─────────────────────────────────────────────
+    var societySet = descend('society');
+    var catRoots = topRoots; // alternate reality / the human world / the natural world
+    function colorCat(n) {
+      if (societySet[n]) return 'society';
+      var best = null, bd = Infinity;
+      catRoots.forEach(function (r) {
+        // distance via BFS distance map (compute lazily)
+        var d = distFrom(r)[n];
+        if (d !== undefined && d < bd) { bd = d; best = r; }
+      });
+      return best || 'the human world';
+    }
+    var distCache = {};
+    function distFrom(root) {
+      if (distCache[root]) return distCache[root];
+      var dist = {}; dist[root] = 0; var q = [root];
+      while (q.length) { var n = q.shift(); (childrenOf[n] || []).forEach(function (c) { if (dist[c] === undefined) { dist[c] = dist[n] + 1; q.push(c); } }); }
+      return (distCache[root] = dist);
+    }
+    // "shared" = spans more than one ultimate domain (counting society as its own domain).
+    function domainCount(n) {
+      var c = 0;
+      if (societySet[n]) c++;
+      ['alternate reality', 'the human world', 'the natural world'].forEach(function (r) {
+        if (r === 'the human world') { if (descend(r)[n] && !societySet[n]) c++; }
+        else if (descend(r)[n]) c++;
+      });
+      return c;
+    }
+    function colorVar(n) { return CAT_COLOR[colorCat(n)] || '#adb5bd'; }
+
+    // ── Tree menu UI ──────────────────────────────────────────────────────────────
+    var treeEl = document.getElementById('tree');
+    var leafEls = {};
+    function renderMenu(nodes, ul) {
+      nodes.forEach(function (node) {
+        var li = document.createElement('li');
+        var row = document.createElement('div'); row.className = 'row';
+        if (node.split) {
+          li.className = 'grp';
+          row.innerHTML = '<span class="caret">&#9662;</span><span class="sw" style="background:' + colorVar(node.name) + '"></span>' + escapeHtml(node.name);
+          row.addEventListener('click', function () { li.classList.toggle('collapsed'); });
+          li.appendChild(row);
+          var sub = document.createElement('ul'); renderMenu(node.children, sub); li.appendChild(sub);
+        } else {
+          li.className = 'leaf'; leafEls[node.name] = li;
+          row.innerHTML = '<span class="sw" style="background:' + colorVar(node.name) + '"></span>' + escapeHtml(node.name);
+          row.addEventListener('click', function () { selectRoot(node.name); });
+          li.appendChild(row);
+        }
+        ul.appendChild(li);
+      });
+    }
+    var rootUl = document.createElement('ul'); renderMenu(menu, rootUl); treeEl.appendChild(rootUl);
 
     // ── Cytoscape ───────────────────────────────────────────────────────────────
     var cy = cytoscape({
-      container: document.getElementById('cy'),
-      wheelSensitivity: 0.2,
+      container: document.getElementById('cy'), wheelSensitivity: 0.2,
       style: [
         { selector: 'node', style: {
           'background-color': 'data(color)', 'label': 'data(label)', 'color': '#212529',
           'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
           'text-max-width': 130, 'width': 'label', 'height': 'label', 'padding': '7px',
           'shape': 'round-rectangle', 'min-zoomed-font-size': 7, 'border-width': 0,
-          'text-outline-width': 2, 'text-outline-color': '#fbfcfd'
-        }},
+          'text-outline-width': 2, 'text-outline-color': '#fbfcfd' } },
         { selector: 'node.shared', style: { 'border-width': 3, 'border-color': 'var(--shared)' } },
         { selector: 'edge', style: {
           'width': 1.3, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
-          'target-arrow-shape': 'triangle', 'arrow-scale': .8, 'curve-style': 'bezier'
-        }},
+          'target-arrow-shape': 'triangle', 'arrow-scale': .8, 'curve-style': 'bezier' } },
         { selector: '.faded', style: { 'opacity': 0.12 } },
-        { selector: '.hi', style: { 'background-blacken': -0.1, 'border-width': 3, 'border-color': '#343a40', 'z-index': 99 } },
+        { selector: '.hi', style: { 'border-width': 3, 'border-color': '#343a40', 'z-index': 99 } },
         { selector: 'edge.hi', style: { 'line-color': '#868e96', 'target-arrow-color': '#868e96', 'width': 2, 'opacity': 1 } }
       ]
     });
 
     function elementsFor(root) {
-      var els = [];
-      var members = Object.keys(memberDist).filter(function (n) { return root in memberDist[n]; });
-      var internal = members.filter(function (n) { return !isLeaf(n); });
+      var reach = descend(root);
+      var internal = Object.keys(reach).filter(function (n) { return !isLeaf(n); });
       var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
+      var els = [];
       internal.forEach(function (n) {
         var leaves = (childrenOf[n] || []).filter(isLeaf);
-        var prim = primaryRoot(n);
-        var shared = rootsOf(n).length > 1;
-        var label = n + (leaves.length ? '  +' + leaves.length : '');
-        els.push({ data: { id: n, label: label, color: colorOf[prim] || '#adb5bd', shared: shared } , classes: shared ? 'shared' : '' });
+        var shared = domainCount(n) > 1;
+        els.push({ data: { id: n, label: n + (leaves.length ? '  +' + leaves.length : ''), color: colorVar(n), }, classes: shared ? 'shared' : '' });
       });
       internal.forEach(function (n) {
         (parentsOf[n] || []).forEach(function (p) { if (inGraph[p]) els.push({ data: { id: p + '→' + n, source: p, target: n } }); });
@@ -177,39 +232,33 @@
     }
 
     function layout() {
-      var hasDagre = !!(window.cytoscapeDagre);
-      var opts = hasDagre
+      var opts = window.cytoscapeDagre
         ? { name: 'dagre', rankDir: 'LR', nodeSep: 18, rankSep: 70, edgeSep: 8, animate: true, animationDuration: 350, fit: true, padding: 30 }
         : { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
       cy.layout(opts).run();
     }
 
+    var active = null;
     function selectRoot(root) {
-      active = root;
-      Array.prototype.forEach.call(tabsEl.children, function (b) { b.classList.toggle('active', b.dataset.root === root); });
+      active = root; focused = null;
+      Object.keys(leafEls).forEach(function (n) { leafEls[n].classList.toggle('active', n === root); });
+      document.getElementById('crumbs').textContent = root;
       cy.elements().remove();
       cy.add(elementsFor(root));
       layout();
       closePanel();
     }
 
-    // ── Interaction ───────────────────────────────────────────────────────────
+    // ── Interaction ───────────────────────────────────────────────────────────────
     var focused = null;
     function clearHi() { cy.elements().removeClass('hi faded'); }
-    function highlightNeighborhood(node) {
-      var hood = node.closedNeighborhood();
-      cy.elements().addClass('faded');
-      hood.removeClass('faded').addClass('hi');
-    }
-
+    function highlightNeighborhood(node) { cy.elements().addClass('faded'); node.closedNeighborhood().removeClass('faded').addClass('hi'); }
     cy.on('mouseover', 'node', function (e) { if (!focused) highlightNeighborhood(e.target); });
     cy.on('mouseout', 'node', function () { if (!focused) clearHi(); });
-
     cy.on('tap', 'node', function (e) { openPanel(e.target); });
     cy.on('tap', function (e) { if (e.target === cy) { closePanel(); if (!focused) clearHi(); } });
 
     function focusSubtree(name) {
-      // Show only the node and its descendants within the current root graph.
       var keep = {}; keep[name] = true; var q = [name];
       while (q.length) { var n = q.shift(); (childrenOf[n] || []).forEach(function (c) { if (!isLeaf(c) && cy.getElementById(c).length && !keep[c]) { keep[c] = true; q.push(c); } }); }
       focused = name;
@@ -217,14 +266,9 @@
         cy.nodes().forEach(function (nd) { nd.style('display', keep[nd.id()] ? 'element' : 'none'); });
         cy.edges().forEach(function (ed) { ed.style('display', (keep[ed.source().id()] && keep[ed.target().id()]) ? 'element' : 'none'); });
       });
-      clearHi();
-      layout();
+      clearHi(); layout();
     }
-    function unfocus() {
-      focused = null;
-      cy.batch(function () { cy.elements().forEach(function (el) { el.style('display', 'element'); }); });
-      layout();
-    }
+    function unfocus() { focused = null; cy.batch(function () { cy.elements().forEach(function (el) { el.style('display', 'element'); }); }); layout(); }
     document.getElementById('reset').addEventListener('click', function () { unfocus(); closePanel(); cy.fit(undefined, 40); });
 
     // ── Side panel ──────────────────────────────────────────────────────────────
@@ -238,49 +282,38 @@
       var leaves = (childrenOf[name] || []).filter(isLeaf).sort();
       var kids = (childrenOf[name] || []).filter(function (c) { return !isLeaf(c); }).sort();
       var pars = (parentsOf[name] || []).slice().sort();
-      var also = rootsOf(name).filter(function (r) { return r !== primaryRoot(name); });
+      var inRoots = navRoots.filter(function (r) { return r !== active && descend(r)[name]; });
 
       var html = '<button class="close" aria-label="Close">&times;</button>';
-      html += '<div class="ptype">theme</div><h2>' + nameLink(name) + '</h2>';
-      if (also.length) {
+      html += '<div class="ptype">theme · ' + escapeHtml(colorCat(name)) + '</div><h2>' + nameLink(name) + '</h2>';
+      if (inRoots.length) {
         html += '<section><div class="lbl">Also under</div>';
-        also.forEach(function (r) { html += '<span class="chip" data-jump="' + escapeAttr(r) + '"><span class="dot" style="background:' + colorOf[r] + '"></span>' + escapeHtml(r) + '</span>'; });
+        inRoots.forEach(function (r) { html += '<span class="chip" data-jump="' + escapeAttr(r) + '"><span class="sw" style="background:' + colorVar(r) + '"></span>' + escapeHtml(r) + '</span>'; });
         html += '</section>';
       }
       if (pars.length) html += '<section><div class="lbl">Parents</div><div>' + pars.map(nameLink).join(' · ') + '</div></section>';
       if (kids.length) html += '<section><div class="lbl">Sub-themes (' + kids.length + ')</div><div>' + kids.map(nameLink).join(' · ') + '</div></section>';
-      if (leaves.length) {
-        html += '<section><div class="lbl">Leaf themes (' + leaves.length + ')</div><ul>';
-        leaves.forEach(function (l) { html += '<li>' + nameLink(l) + '</li>'; });
-        html += '</ul></section>';
-      }
+      if (leaves.length) { html += '<section><div class="lbl">Leaf themes (' + leaves.length + ')</div><ul>'; leaves.forEach(function (l) { html += '<li>' + nameLink(l) + '</li>'; }); html += '</ul></section>'; }
       html += '<div class="actions">';
-      if (kids.length) html += '<button class="btn" data-focus="' + escapeAttr(name) + '">Focus subtree</button>';
+      if (kids.length) html += '<button class="btn" data-focus="1">Focus subtree</button>';
       var hh = themeHref(name); if (hh) html += '<a class="btn" href="' + hh + '">Open page &rarr;</a>';
       html += '</div>';
-      panel.innerHTML = html;
-      panel.classList.add('open');
-
+      panel.innerHTML = html; panel.classList.add('open');
       panel.querySelector('.close').addEventListener('click', closePanel);
       var fb = panel.querySelector('[data-focus]'); if (fb) fb.addEventListener('click', function () { focusSubtree(name); });
-      Array.prototype.forEach.call(panel.querySelectorAll('[data-jump]'), function (chip) {
-        chip.addEventListener('click', function () { jumpTo(chip.dataset.jump, name); });
-      });
-
-      // Highlight + center on the tapped node.
+      Array.prototype.forEach.call(panel.querySelectorAll('[data-jump]'), function (chip) { chip.addEventListener('click', function () { jumpTo(chip.dataset.jump, name); }); });
       clearHi(); highlightNeighborhood(node); cy.animate({ center: { eles: node }, duration: 250 });
     }
-
     function jumpTo(root, name) {
       selectRoot(root);
       var nd = cy.getElementById(name);
-      if (nd.length) { cy.animate({ center: { eles: nd }, zoom: Math.max(cy.zoom(), 1) , duration: 300 }); openPanel(nd); }
+      if (nd.length) { cy.animate({ center: { eles: nd }, zoom: Math.max(cy.zoom(), 1), duration: 300 }); openPanel(nd); }
     }
 
     function escapeHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
 
-    selectRoot(active);
+    selectRoot(navRoots[0]);
   }
 })();
 </script>
