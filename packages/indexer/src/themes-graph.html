@@ -187,7 +187,10 @@
       var info = branchInfo(cat)[n] || { depth: 0, branch: null };
       var sibs = (childrenOf[cat] || []).slice().sort();
       var i = info.branch ? sibs.indexOf(info.branch) : -1;
-      var hueOff = (sibs.length > 1 && i >= 0) ? ((i / (sibs.length - 1)) - 0.5) * 40 : 0;
+      // ~11° of hue per sibling branch (so many-child roots spread as widely as the natural
+      // world's), capped so a category's shades don't wander into another domain's hue.
+      var span = Math.min(11 * (sibs.length - 1), 80);
+      var hueOff = (sibs.length > 1 && i >= 0) ? ((i / (sibs.length - 1)) - 0.5) * span : 0;
       var light = Math.min(base[2] + Math.min(info.depth, 6) * 4, base[2] + 24);
       return 'hsl(' + Math.round(base[0] + hueOff) + ',' + base[1] + '%,' + light + '%)';
     }
