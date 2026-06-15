@@ -206,18 +206,22 @@
     var leafEls = {};
     function isUltimate(n) { return topRoots.indexOf(n) >= 0 || n === 'society'; }
     function ultTint(n) { var b = CAT_BASE[colorCat(n)] || [0, 0, 92]; return 'hsl(' + b[0] + ',' + Math.round(b[1] * 0.65) + '%,93%)'; }
-    function renderMenu(nodes, ul) {
+    function renderMenu(nodes, ul, depth) {
       nodes.forEach(function (node) {
         var li = document.createElement('li');
         var row = document.createElement('div'); row.className = 'row';
         var sw = '<span class="sw" style="background:' + colorForNode(node.name) + '"></span>';
-        if (isUltimate(node.name)) { li.classList.add('ult'); row.style.background = ultTint(node.name); }
+        if (isUltimate(node.name)) {
+          li.classList.add('ult'); row.style.background = ultTint(node.name);
+          // Bleed the tint past the nesting indent to the panel's left edge (text stays put).
+          if (depth > 0) { row.style.marginLeft = (-(depth * 0.85)) + 'rem'; row.style.paddingLeft = (0.6 + depth * 0.85) + 'rem'; }
+        }
         if (node.split) {
           li.classList.add('grp');
           row.innerHTML = sw + escapeHtml(node.name) + '<span class="caret">&#9662;</span>';
           row.addEventListener('click', function () { li.classList.toggle('collapsed'); });
           li.appendChild(row);
-          var sub = document.createElement('ul'); renderMenu(node.children, sub); li.appendChild(sub);
+          var sub = document.createElement('ul'); renderMenu(node.children, sub, depth + 1); li.appendChild(sub);
         } else {
           li.classList.add('leaf'); leafEls[node.name] = li;
           row.innerHTML = sw + escapeHtml(node.name);
@@ -227,7 +231,7 @@
         ul.appendChild(li);
       });
     }
-    var rootUl = document.createElement('ul'); renderMenu(menu, rootUl); treeEl.appendChild(rootUl);
+    var rootUl = document.createElement('ul'); renderMenu(menu, rootUl, 0); treeEl.appendChild(rootUl);
 
     // ── Cytoscape ───────────────────────────────────────────────────────────────
     var cy = cytoscape({
