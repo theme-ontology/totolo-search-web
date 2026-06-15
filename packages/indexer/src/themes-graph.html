@@ -31,11 +31,12 @@
   nav.tree { width: 230px; flex: none; border-right: 1px solid #dee2e6; background: #fff; overflow: auto; padding: .5rem 0; font-size: .82rem; }
   nav.tree ul { list-style: none; margin: 0; padding: 0; }
   nav.tree li > .row { display: flex; align-items: center; gap: .4rem; padding: .2rem .6rem; cursor: pointer; border-radius: 4px; white-space: nowrap; }
-  nav.tree li > .row:hover { background: #f1f3f5; }
-  nav.tree .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  nav.tree li > .row:hover { filter: brightness(.97); }
+  nav.tree .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   nav.tree .grp > .row { font-weight: 600; color: #343a40; }
-  nav.tree .leaf.active > .row { background: #e7f5ff; color: #1971c2; font-weight: 600; }
-  nav.tree .caret { width: .8em; display: inline-block; color: #adb5bd; transition: transform .15s; }
+  nav.tree .ult > .row { font-weight: 700; }   /* ultimate root: tinted row background set inline */
+  nav.tree .leaf.active > .row { outline: 2px solid #1971c2; outline-offset: -2px; }
+  nav.tree .caret { margin-left: auto; padding-left: .4rem; color: #adb5bd; transition: transform .15s; }
   nav.tree li.collapsed > ul { display: none; }
   nav.tree li.collapsed > .row .caret { transform: rotate(-90deg); }
   nav.tree ul ul { padding-left: .85rem; }
@@ -69,7 +70,8 @@
 <body>
 <header class="bar">
   <h1>Theme graph</h1>
-  <a class="home" href="../">&larr; site</a>
+  <a class="home" href="../">&larr; stats</a>
+  <a class="home" href="../../">site</a>
   <span class="spacer"></span>
   <span class="legend">
     <span><span class="sw" style="background:var(--c-alt)"></span>alternate reality</span>
@@ -193,19 +195,23 @@
     // ── Tree menu UI ──────────────────────────────────────────────────────────────
     var treeEl = document.getElementById('tree');
     var leafEls = {};
+    function isUltimate(n) { return topRoots.indexOf(n) >= 0 || n === 'society'; }
+    function ultTint(n) { var b = CAT_BASE[colorCat(n)] || [0, 0, 92]; return 'hsl(' + b[0] + ',' + Math.round(b[1] * 0.65) + '%,93%)'; }
     function renderMenu(nodes, ul) {
       nodes.forEach(function (node) {
         var li = document.createElement('li');
         var row = document.createElement('div'); row.className = 'row';
+        var sw = '<span class="sw" style="background:' + colorForNode(node.name) + '"></span>';
+        if (isUltimate(node.name)) { li.classList.add('ult'); row.style.background = ultTint(node.name); }
         if (node.split) {
-          li.className = 'grp';
-          row.innerHTML = '<span class="caret">&#9662;</span><span class="sw" style="background:' + colorForNode(node.name) + '"></span>' + escapeHtml(node.name);
+          li.classList.add('grp');
+          row.innerHTML = sw + escapeHtml(node.name) + '<span class="caret">&#9662;</span>';
           row.addEventListener('click', function () { li.classList.toggle('collapsed'); });
           li.appendChild(row);
           var sub = document.createElement('ul'); renderMenu(node.children, sub); li.appendChild(sub);
         } else {
-          li.className = 'leaf'; leafEls[node.name] = li;
-          row.innerHTML = '<span class="sw" style="background:' + colorForNode(node.name) + '"></span>' + escapeHtml(node.name);
+          li.classList.add('leaf'); leafEls[node.name] = li;
+          row.innerHTML = sw + escapeHtml(node.name);
           row.addEventListener('click', function () { selectRoot(node.name); });
           li.appendChild(row);
         }
@@ -303,7 +309,7 @@
     // ── Side panel ──────────────────────────────────────────────────────────────
     var panel = document.getElementById('panel');
     function closePanel() { panel.classList.remove('open'); }
-    function themeHref(name) { var s = slugOf[name]; return s ? '../theme/' + s + '.html' : null; }
+    function themeHref(name) { var s = slugOf[name]; return s ? '../../theme/' + s + '.html' : null; }
     function nameLink(name) { var h = themeHref(name); return h ? '<a href="' + h + '">' + escapeHtml(name) + '</a>' : escapeHtml(name); }
 
     function openPanel(node) {

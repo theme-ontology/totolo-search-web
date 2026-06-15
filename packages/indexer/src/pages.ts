@@ -577,6 +577,28 @@ function versionsPage(version: string): string {
   });
 }
 
+// Landing page for the /stats/ section — a simple, extensible index of visualizations and
+// dataset statistics. New stats pages can be added as further list entries / subdirectories.
+function statsHubPage(version: string): string {
+  const body = `<h1 style="font-size:1.5rem;font-weight:700;letter-spacing:-.3px;margin-bottom:.4rem;">Statistics</h1>
+<p style="color:#495057;line-height:1.55;max-width:680px;margin-bottom:1rem;">Interactive views and dataset statistics for the theme ontology.</p>
+<ul style="list-style:none;padding:0;max-width:680px;">
+  <li style="padding:.6rem 0;border-bottom:1px solid #e9ecef;">
+    <a href="themes-graph/" style="font-weight:600;color:#1971c2;text-decoration:none;">Theme graph &rarr;</a>
+    <div style="color:#868e96;font-size:.88rem;margin-top:.15rem;">Interactive map of the theme hierarchy — colour-coded by ultimate root, with foldable leaves and per-root subgraphs.</div>
+  </li>
+</ul>`;
+  return htmlDoc({
+    title: 'Statistics · Theme Ontology',
+    description: 'Theme Ontology statistics and visualizations.',
+    depth: 1,
+    active: '',
+    extraHead: '<meta name="robots" content="noindex">\n',
+    body,
+    version,
+  });
+}
+
 export async function writePages(rawPath: string, docs: Document[], outDir: string): Promise<number> {
   const raw = JSON.parse(await readFile(rawPath, 'utf-8')) as RawCorpus;
   const version = [raw.lto?.version, raw.lto?.timestamp?.slice(0, 10)].filter(Boolean).join(', ');
@@ -690,20 +712,21 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     // Favicon is non-critical; pages render fine without it.
   }
 
-  // Interactive theme-DAG explorer (/themes-graph/). Ships a slim {name, slug, parents} list so
-  // the page can fold leaves, split into per-root subgraphs, and deep-link nodes to /theme/ pages
-  // — all client-side. The page itself is a self-contained static asset (no build coupling).
-  await mkdir(join(outDir, 'themes-graph'), { recursive: true });
+  // Stats / visualizations section (/stats/). Hub page + the interactive theme-DAG explorer
+  // (/stats/themes-graph/), which ships a slim {name, slug, parents} list so it can fold leaves,
+  // split into per-root subgraphs, and deep-link nodes to /theme/ pages — all client-side.
+  await mkdir(join(outDir, 'stats', 'themes-graph'), { recursive: true });
   const graphThemes = (raw.themes ?? []).map(t => ({
     name: t.name,
     slug: themeSlug.get(t.name) ?? '',
     parents: t.parents ?? [],
   }));
-  await writeFile(join(outDir, 'themes-graph.json'),
+  await writeFile(join(outDir, 'stats', 'themes-graph.json'),
     JSON.stringify({ lto: raw.lto, themes: graphThemes }), 'utf-8');
+  await writeFile(join(outDir, 'stats', 'index.html'), statsHubPage(version), 'utf-8');
   try {
     const graphSrc = resolve(dirname(fileURLToPath(import.meta.url)), 'themes-graph.html');
-    await writeFile(join(outDir, 'themes-graph', 'index.html'), await readFile(graphSrc, 'utf-8'), 'utf-8');
+    await writeFile(join(outDir, 'stats', 'themes-graph', 'index.html'), await readFile(graphSrc, 'utf-8'), 'utf-8');
   } catch {
     // The explorer page is an optional spike; its absence shouldn't fail the build.
   }

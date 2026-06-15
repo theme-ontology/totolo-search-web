@@ -76,7 +76,7 @@ jobs:
           aws s3 sync dist-data/ "s3://$BUCKET/" --size-only --cache-control "$CC"
           # --size-only can miss a same-size content edit (e.g. reordering two tokens), which
           # mostly affects the small template-driven files. Force-upload those every time.
-          for f in index.html pages.css pages.js robots.txt favicon.svg versions/index.html themes-graph/index.html; do
+          for f in index.html pages.css pages.js robots.txt favicon.svg versions/index.html stats/index.html stats/themes-graph/index.html; do
             [ -f "dist-data/$f" ] && aws s3 cp "dist-data/$f" "s3://$BUCKET/$f" --cache-control "$CC"
           done
 
@@ -85,5 +85,4 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" \
             --paths "/" "/index.html" "/pages.css" "/pages.js" \
-                    "/theme/*" "/story/*" "/versions/*" \
-                    "/themes-graph/*" "/themes-graph.json"
+                    "/theme/*" "/story/*" "/versions/*" "/stats/*"
