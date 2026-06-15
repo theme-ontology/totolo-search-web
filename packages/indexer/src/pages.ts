@@ -690,6 +690,24 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     // Favicon is non-critical; pages render fine without it.
   }
 
+  // Interactive theme-DAG explorer (/themes-graph/). Ships a slim {name, slug, parents} list so
+  // the page can fold leaves, split into per-root subgraphs, and deep-link nodes to /theme/ pages
+  // — all client-side. The page itself is a self-contained static asset (no build coupling).
+  await mkdir(join(outDir, 'themes-graph'), { recursive: true });
+  const graphThemes = (raw.themes ?? []).map(t => ({
+    name: t.name,
+    slug: themeSlug.get(t.name) ?? '',
+    parents: t.parents ?? [],
+  }));
+  await writeFile(join(outDir, 'themes-graph.json'),
+    JSON.stringify({ lto: raw.lto, themes: graphThemes }), 'utf-8');
+  try {
+    const graphSrc = resolve(dirname(fileURLToPath(import.meta.url)), 'themes-graph.html');
+    await writeFile(join(outDir, 'themes-graph', 'index.html'), await readFile(graphSrc, 'utf-8'), 'utf-8');
+  } catch {
+    // The explorer page is an optional spike; its absence shouldn't fail the build.
+  }
+
   const writes: Array<{ path: string; html: string }> = [];
 
   // ── Theme pages ─────────────────────────────────────────────────────────────

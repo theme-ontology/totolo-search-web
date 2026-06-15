@@ -175,7 +175,7 @@ jobs:
           # search/index.html especially: when only the JS bundle changes, the SPA HTML stays
           # the same byte length (asset hash is fixed-width) so --size-only would skip it and
           # leave it pointing at the just-deleted old bundle (404). Always refresh it.
-          for f in index.html pages.css pages.js robots.txt favicon.svg versions/index.html search/index.html; do
+          for f in index.html pages.css pages.js robots.txt favicon.svg versions/index.html search/index.html themes-graph/index.html; do
             [ -f "site/$f" ] && aws s3 cp "site/$f" "s3://$BUCKET/$f" --cache-control "$CC"
           done
           # versions.json is this job's index of live builds — always refresh it, no-cache.

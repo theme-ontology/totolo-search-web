@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Theme graph · Theme Ontology</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --r0:#7048e8; --r1:#1971c2; --r2:#e8590c; --r3:#c2255c; --r4:#2f9e44; --shared:#f08c00;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
+  header.bar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
+  header.bar h1 { font-size: 1rem; font-weight: 700; margin: 0; letter-spacing: -.2px; }
+  header.bar a.home { color: #495057; text-decoration: none; font-size: .85rem; }
+  header.bar a.home:hover { text-decoration: underline; }
+  .tabs { display: flex; gap: .35rem; flex-wrap: wrap; }
+  .tab { font-size: .8rem; padding: .25rem .6rem; border: 1px solid #ced4da; border-radius: 999px; background: #fff; cursor: pointer; color: #495057; display: inline-flex; align-items: center; gap: .4rem; }
+  .tab .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .tab.active { color: #111; font-weight: 600; border-color: #868e96; background: #f8f9fa; }
+  .spacer { margin-left: auto; }
+  .btn { font-size: .78rem; padding: .25rem .6rem; border: 1px solid #ced4da; border-radius: 6px; background: #fff; cursor: pointer; color: #495057; }
+  .btn:hover { background: #f1f3f5; }
+  .stage { position: relative; flex: 1; min-height: 0; }
+  #cy { position: absolute; inset: 0; background: #fbfcfd; }
+  #hint { position: absolute; left: .8rem; bottom: .6rem; font-size: .72rem; color: #adb5bd; background: rgba(255,255,255,.8); padding: .15rem .4rem; border-radius: 4px; pointer-events: none; }
+  /* Side panel */
+  #panel { position: absolute; top: .6rem; right: .6rem; width: 300px; max-height: calc(100% - 1.2rem); overflow: auto; background: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.08); padding: .8rem .9rem; font-size: .85rem; display: none; }
+  #panel.open { display: block; }
+  #panel h2 { font-size: .95rem; margin: 0 .9rem 0 0; }
+  #panel .ptype { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: #868e96; }
+  #panel .close { position: absolute; top: .5rem; right: .55rem; border: 0; background: none; font-size: 1.1rem; line-height: 1; cursor: pointer; color: #adb5bd; }
+  #panel .close:hover { color: #495057; }
+  #panel section { margin-top: .7rem; }
+  #panel .lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: #868e96; margin-bottom: .25rem; }
+  #panel a { color: #1971c2; text-decoration: none; }
+  #panel a:hover { text-decoration: underline; }
+  #panel ul { margin: .2rem 0; padding-left: 1.1rem; }
+  #panel li { margin: .1rem 0; }
+  .chip { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; padding: .15rem .5rem; border-radius: 999px; border: 1px solid #e9ecef; background: #f8f9fa; cursor: pointer; margin: .15rem .25rem .15rem 0; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .chip:hover { border-color: #adb5bd; }
+  #panel .actions { margin-top: .8rem; display: flex; gap: .4rem; flex-wrap: wrap; }
+  #err { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 2rem; text-align: center; color: #c92a2a; font-size: .9rem; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #868e96; font-size: .9rem; }
+  .legend { font-size: .72rem; color: #868e96; display: inline-flex; align-items: center; gap: .35rem; }
+  .legend .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--shared); background: #fff; }
+</style>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+</head>
+<body>
+<header class="bar">
+  <h1>Theme graph</h1>
+  <a class="home" href="../">&larr; site</a>
+  <div class="tabs" id="tabs"></div>
+  <span class="spacer"></span>
+  <span class="legend"><span class="ring"></span> shared across roots</span>
+  <button class="btn" id="reset">Reset view</button>
+</header>
+<div class="stage">
+  <div id="cy"></div>
+  <div id="loading">Loading theme graph…</div>
+  <div id="err"></div>
+  <div id="hint">Click a node to focus its subtree and see folded leaves · scroll to zoom · drag to pan</div>
+  <aside id="panel"></aside>
+</div>
+<script>
+(function () {
+  var ROOT_COLORS = ['var(--r0)','var(--r1)','var(--r2)','var(--r3)','var(--r4)'];
+  var SPLIT = 'the human world'; // shown split into its children as top-level roots
+  var errEl = document.getElementById('err');
+  var loadEl = document.getElementById('loading');
+  function fail(msg) { loadEl.style.display = 'none'; errEl.style.display = 'flex'; errEl.textContent = msg; }
+
+  if (!window.cytoscape) { fail('Could not load the graph library (cytoscape).'); return; }
+  try { cytoscape.use(window.cytoscapeDagre); } catch (e) { /* dagre layout optional; falls back below */ }
+
+  fetch('../themes-graph.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (data) { build(data.themes || []); })
+    .catch(function (e) { fail('Could not load theme data: ' + e.message); });
+
+  function build(themes) {
+    if (!themes.length) { fail('No themes in the dataset.'); return; }
+    loadEl.style.display = 'none';
+
+    var parentsOf = {}, childrenOf = {}, slugOf = {};
+    themes.forEach(function (t) {
+      parentsOf[t.name] = t.parents || [];
+      slugOf[t.name] = t.slug || '';
+      (t.parents || []).forEach(function (p) { (childrenOf[p] = childrenOf[p] || []).push(t.name); });
+    });
+    var isLeaf = function (n) { return !(childrenOf[n] && childrenOf[n].length); };
+
+    // Display roots: top-level themes, with SPLIT expanded into its children.
+    var topRoots = themes.filter(function (t) { return !(parentsOf[t.name] || []).length; }).map(function (t) { return t.name; });
+    var roots = [];
+    topRoots.forEach(function (r) {
+      if (r === SPLIT && (childrenOf[r] || []).length) childrenOf[r].forEach(function (c) { roots.push(c); });
+      else roots.push(r);
+    });
+
+    // Membership: BFS distance from each root over the children relation. A node may belong to
+    // several roots (the DAG's cross-links); its colour is its nearest root, ties by root order.
+    var memberDist = {}; // name -> { rootName: distance }
+    roots.forEach(function (root) {
+      var seen = {}; seen[root] = 0; var q = [root];
+      while (q.length) {
+        var n = q.shift();
+        (childrenOf[n] || []).forEach(function (c) { if (!(c in seen)) { seen[c] = seen[n] + 1; q.push(c); } });
+      }
+      Object.keys(seen).forEach(function (n) { (memberDist[n] = memberDist[n] || {})[root] = seen[n]; });
+    });
+    function rootsOf(n) { return roots.filter(function (r) { return memberDist[n] && (r in memberDist[n]); }); }
+    function primaryRoot(n) {
+      var rs = rootsOf(n), best = null, bd = Infinity;
+      rs.forEach(function (r) { var d = memberDist[n][r]; if (d < bd) { bd = d; best = r; } });
+      return best;
+    }
+    var colorOf = {}; roots.forEach(function (r, i) { colorOf[r] = ROOT_COLORS[i % ROOT_COLORS.length]; });
+
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+    var tabsEl = document.getElementById('tabs');
+    var active = roots[0];
+    roots.forEach(function (r) {
+      var b = document.createElement('button');
+      b.className = 'tab'; b.dataset.root = r;
+      b.innerHTML = '<span class="dot" style="background:' + colorOf[r] + '"></span>' + escapeHtml(r);
+      b.addEventListener('click', function () { selectRoot(r); });
+      tabsEl.appendChild(b);
+    });
+
+    // ── Cytoscape ───────────────────────────────────────────────────────────────
+    var cy = cytoscape({
+      container: document.getElementById('cy'),
+      wheelSensitivity: 0.2,
+      style: [
+        { selector: 'node', style: {
+          'background-color': 'data(color)', 'label': 'data(label)', 'color': '#212529',
+          'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
+          'text-max-width': 130, 'width': 'label', 'height': 'label', 'padding': '7px',
+          'shape': 'round-rectangle', 'min-zoomed-font-size': 7, 'border-width': 0,
+          'text-outline-width': 2, 'text-outline-color': '#fbfcfd'
+        }},
+        { selector: 'node.shared', style: { 'border-width': 3, 'border-color': 'var(--shared)' } },
+        { selector: 'edge', style: {
+          'width': 1.3, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
+          'target-arrow-shape': 'triangle', 'arrow-scale': .8, 'curve-style': 'bezier'
+        }},
+        { selector: '.faded', style: { 'opacity': 0.12 } },
+        { selector: '.hi', style: { 'background-blacken': -0.1, 'border-width': 3, 'border-color': '#343a40', 'z-index': 99 } },
+        { selector: 'edge.hi', style: { 'line-color': '#868e96', 'target-arrow-color': '#868e96', 'width': 2, 'opacity': 1 } }
+      ]
+    });
+
+    function elementsFor(root) {
+      var els = [];
+      var members = Object.keys(memberDist).filter(function (n) { return root in memberDist[n]; });
+      var internal = members.filter(function (n) { return !isLeaf(n); });
+      var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
+      internal.forEach(function (n) {
+        var leaves = (childrenOf[n] || []).filter(isLeaf);
+        var prim = primaryRoot(n);
+        var shared = rootsOf(n).length > 1;
+        var label = n + (leaves.length ? '  +' + leaves.length : '');
+        els.push({ data: { id: n, label: label, color: colorOf[prim] || '#adb5bd', shared: shared } , classes: shared ? 'shared' : '' });
+      });
+      internal.forEach(function (n) {
+        (parentsOf[n] || []).forEach(function (p) { if (inGraph[p]) els.push({ data: { id: p + '→' + n, source: p, target: n } }); });
+      });
+      return els;
+    }
+
+    function layout() {
+      var hasDagre = !!(window.cytoscapeDagre);
+      var opts = hasDagre
+        ? { name: 'dagre', rankDir: 'LR', nodeSep: 18, rankSep: 70, edgeSep: 8, animate: true, animationDuration: 350, fit: true, padding: 30 }
+        : { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
+      cy.layout(opts).run();
+    }
+
+    function selectRoot(root) {
+      active = root;
+      Array.prototype.forEach.call(tabsEl.children, function (b) { b.classList.toggle('active', b.dataset.root === root); });
+      cy.elements().remove();
+      cy.add(elementsFor(root));
+      layout();
+      closePanel();
+    }
+
+    // ── Interaction ───────────────────────────────────────────────────────────
+    var focused = null;
+    function clearHi() { cy.elements().removeClass('hi faded'); }
+    function highlightNeighborhood(node) {
+      var hood = node.closedNeighborhood();
+      cy.elements().addClass('faded');
+      hood.removeClass('faded').addClass('hi');
+    }
+
+    cy.on('mouseover', 'node', function (e) { if (!focused) highlightNeighborhood(e.target); });
+    cy.on('mouseout', 'node', function () { if (!focused) clearHi(); });
+
+    cy.on('tap', 'node', function (e) { openPanel(e.target); });
+    cy.on('tap', function (e) { if (e.target === cy) { closePanel(); if (!focused) clearHi(); } });
+
+    function focusSubtree(name) {
+      // Show only the node and its descendants within the current root graph.
+      var keep = {}; keep[name] = true; var q = [name];
+      while (q.length) { var n = q.shift(); (childrenOf[n] || []).forEach(function (c) { if (!isLeaf(c) && cy.getElementById(c).length && !keep[c]) { keep[c] = true; q.push(c); } }); }
+      focused = name;
+      cy.batch(function () {
+        cy.nodes().forEach(function (nd) { nd.style('display', keep[nd.id()] ? 'element' : 'none'); });
+        cy.edges().forEach(function (ed) { ed.style('display', (keep[ed.source().id()] && keep[ed.target().id()]) ? 'element' : 'none'); });
+      });
+      clearHi();
+      layout();
+    }
+    function unfocus() {
+      focused = null;
+      cy.batch(function () { cy.elements().forEach(function (el) { el.style('display', 'element'); }); });
+      layout();
+    }
+    document.getElementById('reset').addEventListener('click', function () { unfocus(); closePanel(); cy.fit(undefined, 40); });
+
+    // ── Side panel ──────────────────────────────────────────────────────────────
+    var panel = document.getElementById('panel');
+    function closePanel() { panel.classList.remove('open'); }
+    function themeHref(name) { var s = slugOf[name]; return s ? '../theme/' + s + '.html' : null; }
+    function nameLink(name) { var h = themeHref(name); return h ? '<a href="' + h + '">' + escapeHtml(name) + '</a>' : escapeHtml(name); }
+
+    function openPanel(node) {
+      var name = node.id();
+      var leaves = (childrenOf[name] || []).filter(isLeaf).sort();
+      var kids = (childrenOf[name] || []).filter(function (c) { return !isLeaf(c); }).sort();
+      var pars = (parentsOf[name] || []).slice().sort();
+      var also = rootsOf(name).filter(function (r) { return r !== primaryRoot(name); });
+
+      var html = '<button class="close" aria-label="Close">&times;</button>';
+      html += '<div class="ptype">theme</div><h2>' + nameLink(name) + '</h2>';
+      if (also.length) {
+        html += '<section><div class="lbl">Also under</div>';
+        also.forEach(function (r) { html += '<span class="chip" data-jump="' + escapeAttr(r) + '"><span class="dot" style="background:' + colorOf[r] + '"></span>' + escapeHtml(r) + '</span>'; });
+        html += '</section>';
+      }
+      if (pars.length) html += '<section><div class="lbl">Parents</div><div>' + pars.map(nameLink).join(' · ') + '</div></section>';
+      if (kids.length) html += '<section><div class="lbl">Sub-themes (' + kids.length + ')</div><div>' + kids.map(nameLink).join(' · ') + '</div></section>';
+      if (leaves.length) {
+        html += '<section><div class="lbl">Leaf themes (' + leaves.length + ')</div><ul>';
+        leaves.forEach(function (l) { html += '<li>' + nameLink(l) + '</li>'; });
+        html += '</ul></section>';
+      }
+      html += '<div class="actions">';
+      if (kids.length) html += '<button class="btn" data-focus="' + escapeAttr(name) + '">Focus subtree</button>';
+      var hh = themeHref(name); if (hh) html += '<a class="btn" href="' + hh + '">Open page &rarr;</a>';
+      html += '</div>';
+      panel.innerHTML = html;
+      panel.classList.add('open');
+
+      panel.querySelector('.close').addEventListener('click', closePanel);
+      var fb = panel.querySelector('[data-focus]'); if (fb) fb.addEventListener('click', function () { focusSubtree(name); });
+      Array.prototype.forEach.call(panel.querySelectorAll('[data-jump]'), function (chip) {
+        chip.addEventListener('click', function () { jumpTo(chip.dataset.jump, name); });
+      });
+
+      // Highlight + center on the tapped node.
+      clearHi(); highlightNeighborhood(node); cy.animate({ center: { eles: node }, duration: 250 });
+    }
+
+    function jumpTo(root, name) {
+      selectRoot(root);
+      var nd = cy.getElementById(name);
+      if (nd.length) { cy.animate({ center: { eles: nd }, zoom: Math.max(cy.zoom(), 1) , duration: 300 }); openPanel(nd); }
+    }
+
+    function escapeHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
+
+    selectRoot(active);
+  }
+})();
+</script>
+</body>
+</html>
