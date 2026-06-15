@@ -24,7 +24,7 @@
   .legend { font-size: .72rem; color: #868e96; display: inline-flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
   .legend span { display: inline-flex; align-items: center; gap: .3rem; }
   .legend .sw { width: 10px; height: 10px; border-radius: 50%; }
-  .legend .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--shared); background: #fff; }
+  .legend .multi { width: 13px; height: 13px; border-radius: 3px; background: linear-gradient(135deg, var(--c-human) 0 50%, var(--c-nat) 50% 100%); }
 
   .body { flex: 1; min-height: 0; display: flex; }
   /* Root tree menu */
@@ -76,7 +76,7 @@
     <span><span class="sw" style="background:var(--c-human)"></span>the human world</span>
     <span><span class="sw" style="background:var(--c-soc)"></span>society</span>
     <span><span class="sw" style="background:var(--c-nat)"></span>the natural world</span>
-    <span><span class="ring"></span>shared</span>
+    <span><span class="multi"></span>multiple roots</span>
   </span>
   <button class="btn" id="reset">Reset view</button>
 </header>
@@ -94,7 +94,7 @@
 <script>
 (function () {
   // Nodes shown SPLIT into their children (their children become navigable roots instead of them).
-  var SPLIT = ['the human world', 'alternate reality', 'personal human experience', 'society'];
+  var SPLIT = ['the human world', 'alternate reality', 'personal human experience', 'society', 'individual humans'];
   // Ultimate-root colour categories (society carved out of the human world). Base HSL; child
   // roots get a small per-branch hue shift and lighten with depth. Real colours (not CSS vars)
   // because Cytoscape's canvas renderer can't resolve var(--…).
@@ -157,15 +157,17 @@
       catRoots.forEach(function (r) { var d = distFrom(r)[n]; if (d !== undefined && d < bd) { bd = d; best = r; } });
       return best;
     }
-    // "shared" = spans more than one ultimate domain (society counts as its own domain).
-    function domainCount(n) {
-      var c = societySet[n] ? 1 : 0;
-      ['alternate reality', 'the human world', 'the natural world'].forEach(function (r) {
-        if (r === 'the human world') { if (descend(r)[n] && !societySet[n]) c++; }
-        else if (descend(r)[n]) c++;
+    // Ultimate domains a node spans (society counts as its own domain). >1 => "multi": its fill
+    // is split between the domain base colours (diagonal hard-stop gradient).
+    var DOMAIN_ORDER = ['alternate reality', 'the human world', 'the natural world', 'society'];
+    function domainsOf(n) {
+      return DOMAIN_ORDER.filter(function (r) {
+        if (r === 'society') return !!societySet[n];
+        if (r === 'the human world') return !!descend(r)[n] && !societySet[n];
+        return !!descend(r)[n];
       });
-      return c;
     }
+    function catBaseColor(cat) { var b = CAT_BASE[cat] || [0, 0, 60]; return 'hsl(' + b[0] + ',' + b[1] + '%,' + b[2] + '%)'; }
     // Per-category-root BFS recording each node's depth and which immediate child ("branch") of
     // the category root it descends from — used to vary hue per branch and lighten by depth.
     var branchCache = {};
@@ -217,11 +219,16 @@
       container: document.getElementById('cy'), wheelSensitivity: 0.2,
       style: [
         { selector: 'node', style: {
-          'background-color': 'data(color)', 'background-opacity': 0.5, 'label': 'data(label)', 'color': '#212529',
+          'background-color': 'data(color)', 'background-opacity': 0.5,
+          'border-width': 1.2, 'border-color': 'data(color)', 'border-opacity': 0.8,
+          'label': 'data(label)', 'color': '#212529',
           'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
           'text-max-width': 130, 'width': 'label', 'height': 'label', 'padding': '7px',
-          'shape': 'round-rectangle', 'min-zoomed-font-size': 7, 'border-width': 0 } },
-        { selector: 'node.shared', style: { 'border-width': 3, 'border-color': '#f08c00' } },
+          'shape': 'round-rectangle', 'min-zoomed-font-size': 7 } },
+        // Multi-domain node: fill split between its domains' base colours along the diagonal.
+        { selector: 'node.multi', style: {
+          'background-fill': 'linear-gradient', 'background-gradient-direction': 'to-bottom-right',
+          'background-gradient-stop-colors': 'data(grad)', 'background-gradient-stop-positions': 'data(gradPos)' } },
         { selector: 'edge', style: {
           'width': 1.3, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle', 'arrow-scale': .8, 'curve-style': 'bezier' } },
@@ -238,8 +245,14 @@
       var els = [];
       internal.forEach(function (n) {
         var leaves = (childrenOf[n] || []).filter(isLeaf);
-        var shared = domainCount(n) > 1;
-        els.push({ data: { id: n, label: n + (leaves.length ? '  +' + leaves.length : ''), color: colorForNode(n) }, classes: shared ? 'shared' : '' });
+        var doms = domainsOf(n);
+        var d = { id: n, label: n + (leaves.length ? '  +' + leaves.length : ''), color: colorForNode(n) };
+        if (doms.length > 1) {
+          var cols = doms.map(catBaseColor), gc = [], gp = [], m = cols.length;
+          for (var k = 0; k < m; k++) { gc.push(cols[k], cols[k]); gp.push(Math.round(k / m * 100) + '%', Math.round((k + 1) / m * 100) + '%'); }
+          d.grad = gc.join(' '); d.gradPos = gp.join(' ');
+        }
+        els.push({ data: d, classes: doms.length > 1 ? 'multi' : '' });
       });
       internal.forEach(function (n) {
         (parentsOf[n] || []).forEach(function (p) { if (inGraph[p]) els.push({ data: { id: p + '→' + n, source: p, target: n } }); });
