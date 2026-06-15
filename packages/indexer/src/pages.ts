@@ -147,7 +147,8 @@ footer a { color: #adb5bd; }
 .versions-list { max-width: 720px; }
 .version-branch { font-size: 1rem; font-weight: 600; margin: 1.1rem 0 .5rem; }
 .version-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: .75rem; padding: .5rem .25rem; border-bottom: 1px solid #e9ecef; font-size: .9rem; }
-.version-row .date { font-weight: 600; min-width: 6em; }
+.version-row .name { font-weight: 600; min-width: 9.5em; }   /* tag, or build month ("June 2026") */
+.version-row .date { color: #adb5bd; font-size: .82rem; min-width: 6em; }   /* full build date, subtle */
 .version-row .badge { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; padding: .1em .45em; border-radius: 3px; }
 .version-row .badge.current { background: #e7f5ff; color: #1971c2; }   /* the version you're viewing */
 .version-row .badge.latest { background: #ebfbee; color: #2f9e44; }    /* newest under its heading */
@@ -157,9 +158,10 @@ footer a { color: #adb5bd; }
 .version-row .dl { font-size: .8rem; color: #1971c2; text-decoration: none; white-space: nowrap; }
 .version-row .dl::before { content: "\\2193\\00a0"; color: #adb5bd; }
 .version-row .dl:hover { text-decoration: underline; }
-/* GitHub source links on the branch heading / release tag (inherit text style + ↗ mark). */
-.version-branch a, .version-row .date a { color: inherit; text-decoration: none; }
-.version-branch a:hover, .version-row .date a:hover { text-decoration: underline; }
+/* GitHub source links on the section headings, and the first-column search links on rows
+   (both inherit the text style; headings add the ↗ external mark). */
+.version-branch a, .version-row .name-link { color: inherit; text-decoration: none; }
+.version-branch a:hover, .version-row .name-link:hover { text-decoration: underline; }
 .versions-list .ext-mark { font-size: .8em; color: #adb5bd; }
 
 /* ── Detail (theme / story / collection) pages ────────────────────────────── */
@@ -501,12 +503,23 @@ function versionsPage(version: string): string {
         return (isCurrent(v) ? '<span class="badge current">current</span>' : '')
           + (latest ? '<span class="badge latest">latest</span>' : '');
       };
-      // External link to the source on GitHub, with the ↗ external-site mark: a release tag
-      // links to its release page; a branch heading links to the branch tree.
+      // External link to the source on GitHub, with the ↗ external-site mark. Only the
+      // section headings link out: a branch heading -> its branch tree, the releases heading
+      // -> the releases page. (Rows themselves link inward, to the build's search page.)
       var REPO = 'https://github.com/theme-ontology/theming';
       var ext = function (href, text) {
         return '<a href="' + href + '" target="_blank" rel="noopener">' + text
           + ' <span class="ext-mark" aria-hidden="true">↗</span></a>';
+      };
+      // First-column name links to this build's own search page (path is like '/', '/vX/',
+      // '/<branch>/'). Branch builds show the build month ("June 2026"); releases show the tag.
+      var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var monthLabel = function (d) {
+        var p = String(d).split('-');
+        return (p.length >= 2 && MONTHS[parseInt(p[1], 10) - 1]) ? MONTHS[parseInt(p[1], 10) - 1] + ' ' + p[0] : String(d);
+      };
+      var searchLink = function (v, text) {
+        return '<a class="name-link" href="' + (v.path || '/') + 'search/">' + text + '</a>';
       };
       // Each version hosts its own dataset files at <path>{themes,stories,collections}.json;
       // the download attribute names the saved file lto-<version>-<type>.json (as on /data).
@@ -521,22 +534,24 @@ function versionsPage(version: string): string {
       var releases = [], byBranch = {};
       versions.forEach(function (v) { if (v.release) releases.push(v); else (byBranch[v.branch] = byBranch[v.branch] || []).push(v); });
       var html = '';
-      // Branches: the heading links to the GitHub branch; each row shows its last-change date.
+      // Branches: the heading links to the GitHub branch; each row's name is the build month,
+      // linking to that build's search page, with the full build date alongside.
       Object.keys(byBranch).sort().forEach(function (branch) {
         html += '<div class="version-branch">' + ext(REPO + '/tree/' + branch, branch) + '</div>';
         byBranch[branch].sort(function (a, b) { return (b.date || b.built || '').localeCompare(a.date || a.built || ''); })
           .forEach(function (v, i) {
-            html += '<div class="version-row"><span class="date">' + ymd(v) + '</span>'
-              + badges(v, i === 0) + downloads(v) + '</div>';
+            html += '<div class="version-row"><span class="name">' + searchLink(v, monthLabel(ymd(v))) + '</span>'
+              + '<span class="date">' + ymd(v) + '</span>' + badges(v, i === 0) + downloads(v) + '</div>';
           });
       });
-      // Releases: the tag links to the GitHub release page; the release date sits alongside.
+      // Releases: the heading links to the GitHub releases page; each row's name is the tag,
+      // linking to that release's search page, with the release date alongside.
       if (releases.length) {
-        html += '<div class="version-branch">releases</div>';
+        html += '<div class="version-branch">' + ext(REPO + '/releases', 'releases') + '</div>';
         releases.sort(function (a, b) { return (b.tag || '').localeCompare(a.tag || ''); })
           .forEach(function (v, i) {
-            html += '<div class="version-row"><span class="date">' + ext(REPO + '/releases/tag/' + v.tag, v.tag) + '</span>'
-              + '<span class="muted">' + ymd(v) + '</span>' + badges(v, i === 0) + downloads(v) + '</div>';
+            html += '<div class="version-row"><span class="name">' + searchLink(v, v.tag) + '</span>'
+              + '<span class="date">' + ymd(v) + '</span>' + badges(v, i === 0) + downloads(v) + '</div>';
           });
       }
       el.innerHTML = html;
