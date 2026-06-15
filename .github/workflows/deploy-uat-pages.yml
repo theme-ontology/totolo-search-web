@@ -70,7 +70,9 @@ jobs:
         # without --delete touches nothing else in the bucket. --size-only skips the
         # thousands of unchanged per-doc HTML files, uploading just what changed.
         run: |
-          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=300"
+          # 1h edge TTL on the mutable root (page paths are invalidated below on every run),
+          # so far-edge users are served from cache instead of round-tripping to eu-west-1.
+          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=3600"
           aws s3 sync dist-data/ "s3://$BUCKET/" --size-only --cache-control "$CC"
           # --size-only can miss a same-size content edit (e.g. reordering two tokens), which
           # mostly affects the small template-driven files. Force-upload those every time.

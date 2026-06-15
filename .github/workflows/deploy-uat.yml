@@ -159,7 +159,9 @@ jobs:
 
       - name: Publish live site to bucket root
         run: |
-          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=300"
+          # Mutable "latest" root: 1h edge TTL (every deploy invalidates /* so it stays fresh),
+          # which keeps far-edge users served from cache instead of round-tripping to eu-west-1.
+          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=3600"
           # Reuse-safe publish: top-level files use --size-only with NO --delete, so the
           # embeddings index artifacts (not regenerated when the corpus is unchanged) and the
           # /models/ + /master/ prefixes sharing the root all survive. Each page subtree this
@@ -190,7 +192,7 @@ jobs:
             done
           fi
           aws s3 sync site/ "s3://$BUCKET/${{ steps.vars.outputs.prefix }}/" --delete \
-            --cache-control "public, max-age=300"
+            --cache-control "public, max-age=3600"
 
       - name: Invalidate CloudFront
         if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
