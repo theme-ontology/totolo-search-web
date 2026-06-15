@@ -9,7 +9,7 @@
 <style>
   /* Ultimate-root colours (society is carved out of "the human world" as a special case). */
   :root {
-    --c-alt:#7048e8; --c-human:#1971c2; --c-nat:#2f9e44; --c-soc:#c2255c; --shared:#f08c00;
+    --c-alt:#7048e8; --c-human:#e03131; --c-nat:#1971c2; --c-soc:#2f9e44; --shared:#f08c00;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -94,9 +94,11 @@
 <script>
 (function () {
   // Nodes shown SPLIT into their children (their children become navigable roots instead of them).
-  var SPLIT = ['the human world', 'alternate reality', 'personal human experience'];
-  // Ultimate-root colour categories. "society" is special-cased out of "the human world".
-  var CAT_COLOR = { 'alternate reality': 'var(--c-alt)', 'the human world': 'var(--c-human)', 'the natural world': 'var(--c-nat)', 'society': 'var(--c-soc)' };
+  var SPLIT = ['the human world', 'alternate reality', 'personal human experience', 'society'];
+  // Ultimate-root colour categories (society carved out of the human world). Base HSL; child
+  // roots get a small per-branch hue shift and lighten with depth. Real colours (not CSS vars)
+  // because Cytoscape's canvas renderer can't resolve var(--…).
+  var CAT_BASE = { 'alternate reality': [262,60,56], 'the human world': [0,68,56], 'the natural world': [209,72,48], 'society': [131,42,40] };
 
   var errEl = document.getElementById('err'), loadEl = document.getElementById('loading');
   function fail(msg) { loadEl.style.display = 'none'; errEl.style.display = 'flex'; errEl.textContent = msg; }
@@ -141,17 +143,7 @@
 
     // ── Ultimate-root colour category ─────────────────────────────────────────────
     var societySet = descend('society');
-    var catRoots = topRoots; // alternate reality / the human world / the natural world
-    function colorCat(n) {
-      if (societySet[n]) return 'society';
-      var best = null, bd = Infinity;
-      catRoots.forEach(function (r) {
-        // distance via BFS distance map (compute lazily)
-        var d = distFrom(r)[n];
-        if (d !== undefined && d < bd) { bd = d; best = r; }
-      });
-      return best || 'the human world';
-    }
+    var catRoots = topRoots; // top-level: alternate reality / the human world / the natural world
     var distCache = {};
     function distFrom(root) {
       if (distCache[root]) return distCache[root];
@@ -159,17 +151,42 @@
       while (q.length) { var n = q.shift(); (childrenOf[n] || []).forEach(function (c) { if (dist[c] === undefined) { dist[c] = dist[n] + 1; q.push(c); } }); }
       return (distCache[root] = dist);
     }
-    // "shared" = spans more than one ultimate domain (counting society as its own domain).
+    function colorCat(n) {
+      if (societySet[n]) return 'society';
+      var best = 'the human world', bd = Infinity;
+      catRoots.forEach(function (r) { var d = distFrom(r)[n]; if (d !== undefined && d < bd) { bd = d; best = r; } });
+      return best;
+    }
+    // "shared" = spans more than one ultimate domain (society counts as its own domain).
     function domainCount(n) {
-      var c = 0;
-      if (societySet[n]) c++;
+      var c = societySet[n] ? 1 : 0;
       ['alternate reality', 'the human world', 'the natural world'].forEach(function (r) {
         if (r === 'the human world') { if (descend(r)[n] && !societySet[n]) c++; }
         else if (descend(r)[n]) c++;
       });
       return c;
     }
-    function colorVar(n) { return CAT_COLOR[colorCat(n)] || '#adb5bd'; }
+    // Per-category-root BFS recording each node's depth and which immediate child ("branch") of
+    // the category root it descends from — used to vary hue per branch and lighten by depth.
+    var branchCache = {};
+    function branchInfo(root) {
+      if (branchCache[root]) return branchCache[root];
+      var info = {}; info[root] = { depth: 0, branch: null };
+      (childrenOf[root] || []).forEach(function (c) { if (!info[c]) info[c] = { depth: 1, branch: c }; });
+      var q = (childrenOf[root] || []).slice();
+      while (q.length) { var n = q.shift(); (childrenOf[n] || []).forEach(function (c) { if (!info[c]) { info[c] = { depth: info[n].depth + 1, branch: info[n].branch }; q.push(c); } }); }
+      return (branchCache[root] = info);
+    }
+    function colorForNode(n) {
+      var cat = colorCat(n);                       // category root is a real node name
+      var base = CAT_BASE[cat] || [0, 0, 60];
+      var info = branchInfo(cat)[n] || { depth: 0, branch: null };
+      var sibs = (childrenOf[cat] || []).slice().sort();
+      var i = info.branch ? sibs.indexOf(info.branch) : -1;
+      var hueOff = (sibs.length > 1 && i >= 0) ? ((i / (sibs.length - 1)) - 0.5) * 40 : 0;
+      var light = Math.min(base[2] + Math.min(info.depth, 6) * 4, base[2] + 24);
+      return 'hsl(' + Math.round(base[0] + hueOff) + ',' + base[1] + '%,' + light + '%)';
+    }
 
     // ── Tree menu UI ──────────────────────────────────────────────────────────────
     var treeEl = document.getElementById('tree');
@@ -180,13 +197,13 @@
         var row = document.createElement('div'); row.className = 'row';
         if (node.split) {
           li.className = 'grp';
-          row.innerHTML = '<span class="caret">&#9662;</span><span class="sw" style="background:' + colorVar(node.name) + '"></span>' + escapeHtml(node.name);
+          row.innerHTML = '<span class="caret">&#9662;</span><span class="sw" style="background:' + colorForNode(node.name) + '"></span>' + escapeHtml(node.name);
           row.addEventListener('click', function () { li.classList.toggle('collapsed'); });
           li.appendChild(row);
           var sub = document.createElement('ul'); renderMenu(node.children, sub); li.appendChild(sub);
         } else {
           li.className = 'leaf'; leafEls[node.name] = li;
-          row.innerHTML = '<span class="sw" style="background:' + colorVar(node.name) + '"></span>' + escapeHtml(node.name);
+          row.innerHTML = '<span class="sw" style="background:' + colorForNode(node.name) + '"></span>' + escapeHtml(node.name);
           row.addEventListener('click', function () { selectRoot(node.name); });
           li.appendChild(row);
         }
@@ -200,12 +217,11 @@
       container: document.getElementById('cy'), wheelSensitivity: 0.2,
       style: [
         { selector: 'node', style: {
-          'background-color': 'data(color)', 'label': 'data(label)', 'color': '#212529',
+          'background-color': 'data(color)', 'background-opacity': 0.5, 'label': 'data(label)', 'color': '#212529',
           'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
           'text-max-width': 130, 'width': 'label', 'height': 'label', 'padding': '7px',
-          'shape': 'round-rectangle', 'min-zoomed-font-size': 7, 'border-width': 0,
-          'text-outline-width': 2, 'text-outline-color': '#fbfcfd' } },
-        { selector: 'node.shared', style: { 'border-width': 3, 'border-color': 'var(--shared)' } },
+          'shape': 'round-rectangle', 'min-zoomed-font-size': 7, 'border-width': 0 } },
+        { selector: 'node.shared', style: { 'border-width': 3, 'border-color': '#f08c00' } },
         { selector: 'edge', style: {
           'width': 1.3, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle', 'arrow-scale': .8, 'curve-style': 'bezier' } },
@@ -223,7 +239,7 @@
       internal.forEach(function (n) {
         var leaves = (childrenOf[n] || []).filter(isLeaf);
         var shared = domainCount(n) > 1;
-        els.push({ data: { id: n, label: n + (leaves.length ? '  +' + leaves.length : ''), color: colorVar(n), }, classes: shared ? 'shared' : '' });
+        els.push({ data: { id: n, label: n + (leaves.length ? '  +' + leaves.length : ''), color: colorForNode(n) }, classes: shared ? 'shared' : '' });
       });
       internal.forEach(function (n) {
         (parentsOf[n] || []).forEach(function (p) { if (inGraph[p]) els.push({ data: { id: p + '→' + n, source: p, target: n } }); });
@@ -288,7 +304,7 @@
       html += '<div class="ptype">theme · ' + escapeHtml(colorCat(name)) + '</div><h2>' + nameLink(name) + '</h2>';
       if (inRoots.length) {
         html += '<section><div class="lbl">Also under</div>';
-        inRoots.forEach(function (r) { html += '<span class="chip" data-jump="' + escapeAttr(r) + '"><span class="sw" style="background:' + colorVar(r) + '"></span>' + escapeHtml(r) + '</span>'; });
+        inRoots.forEach(function (r) { html += '<span class="chip" data-jump="' + escapeAttr(r) + '"><span class="sw" style="background:' + colorForNode(r) + '"></span>' + escapeHtml(r) + '</span>'; });
         html += '</section>';
       }
       if (pars.length) html += '<section><div class="lbl">Parents</div><div>' + pars.map(nameLink).join(' · ') + '</div></section>';
