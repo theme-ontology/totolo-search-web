@@ -173,7 +173,13 @@ footer a { color: #adb5bd; }
 .doc.type-collection { --doc-accent: #198754; }
 /* Secondary metadata floats in a sidebar beside the whole content (head + table),
    from the top. Stacks to a single column on narrow screens. */
-.doc-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem 1.75rem; align-items: start; }
+/* Three areas (intro / aside / main=tables). Single column by default, the sidebar folding in
+   between the intro and the tables; widened to two columns at >=900px with the sidebar on the
+   right spanning both rows. */
+.doc-grid { display: grid; grid-template-columns: 1fr; grid-template-areas: "intro" "aside" "main"; gap: 1.25rem 1.75rem; align-items: start; }
+.doc-intro { grid-area: intro; }
+.doc-aside { grid-area: aside; }
+.doc-main { grid-area: main; }
 .doc-head { padding-bottom: 1rem; border-bottom: 1px solid #eef0f2; }
 .doc-head h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.3px; margin-bottom: .25rem; }
 .ancestors { font-size: .85rem; line-height: 1.75; color: #495057; }
@@ -208,7 +214,7 @@ ul.plain li { margin-bottom: .2rem; font-size: .85rem; }
 .copy-name.copied { color: #2f9e44; }
 .copy-name.copied::after { content: "Copied"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 3px; font-size: .62rem; font-weight: 600; color: #2f9e44; background: #fff; padding: 0 .2rem; white-space: nowrap; }
 @media (min-width: 900px) {
-  .doc-grid { grid-template-columns: minmax(0, 1fr) 280px; }
+  .doc-grid { grid-template-columns: minmax(0, 1fr) 280px; grid-template-areas: "intro aside" "main aside"; }
   .doc-aside { border-left: 1px solid #eef0f2; padding-left: 1.5rem; }
 }
 /* Narrow screens (phones): drop the card chrome (border, radius, inner padding,
@@ -695,11 +701,13 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     if (t.aliases && t.aliases.length > 0) headParts.push(`<p class="meta">also known as: ${t.aliases.map(esc).join(', ')}</p>`);
     if (t.description) headParts.push(`<p class="desc">${esc(t.description)}</p>`);
 
-    // Main column: header + prose (notes/examples) + the big usage table.
-    const content: string[] = [`<header class="doc-head">${headParts.join('\n')}</header>`];
-    if (t.notes) content.push(`<h2>Notes</h2><p class="desc">${esc(t.notes)}</p>`);
-    if (t.examples) content.push(`<h2>Examples</h2><p class="desc">${esc(t.examples)}</p>`);
+    // Intro block: header + prose (notes/examples). The tables go in a separate main block
+    // below, so the sidebar can fold in between them (above the tables) on narrow screens.
+    const intro: string[] = [`<header class="doc-head">${headParts.join('\n')}</header>`];
+    if (t.notes) intro.push(`<h2>Notes</h2><p class="desc">${esc(t.notes)}</p>`);
+    if (t.examples) intro.push(`<h2>Examples</h2><p class="desc">${esc(t.examples)}</p>`);
 
+    const main: string[] = [];
     const overflow: Record<string, string> = {};
     const usages = (usagesByTheme.get(t.name) ?? []).sort((a, b) =>
       levelRank(a.level) - levelRank(b.level) || a.story.localeCompare(b.story));
@@ -711,7 +719,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
 </tr>`);
       const heading = `<p class="tbl-summary">${levelSummary(usages.map(u => u.level))}</p>`;
       const tbl = tableSection('tbl-stories', heading, ['Story', 'Level', 'Motivation'], rows, `${slug}.json`, 'stories');
-      content.push(tbl.html);
+      main.push(tbl.html);
       if (tbl.overflow) overflow['stories'] = tbl.overflow;
     }
 
@@ -742,8 +750,9 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
         active: '',
         body: `${sourceLine('theme', t.name)}<article class="doc type-theme">
 <div class="doc-grid">
-<div class="doc-content">${content.filter(Boolean).join('\n')}</div>
+<div class="doc-intro">${intro.filter(Boolean).join('\n')}</div>
 <aside class="doc-aside">${aside.filter(Boolean).join('\n') || '&nbsp;'}</aside>
+<div class="doc-main">${main.filter(Boolean).join('\n')}</div>
 </div>
 </article>`,
         version,
@@ -766,7 +775,10 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     if (metaBits.length > 0) headParts.push(`<p class="meta">${metaBits.map(esc).join(' · ')}</p>`);
     if (s.description) headParts.push(`<p class="desc">${esc(s.description)}</p>`);
 
-    const content: string[] = [`<header class="doc-head">${headParts.join('\n')}</header>`];
+    // Intro = header; tables go in the main block below so the sidebar folds in above them
+    // on narrow screens (see .doc-grid grid-template-areas).
+    const intro: string[] = [`<header class="doc-head">${headParts.join('\n')}</header>`];
+    const main: string[] = [];
     const overflow: Record<string, string> = {};
 
     const annotations = (s.themes ?? []).slice().sort((a, b) =>
@@ -779,7 +791,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
 </tr>`);
       const heading = `<p class="tbl-summary">${levelSummary(annotations.map(a => a.level))}</p>`;
       const tbl = tableSection('tbl-themes', heading, ['Theme', 'Level', 'Motivation'], rows, `${slug}.json`, 'themes');
-      content.push(tbl.html);
+      main.push(tbl.html);
       if (tbl.overflow) overflow['themes'] = tbl.overflow;
     }
 
@@ -788,7 +800,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
       const rows = components.map(name => `<tr><td>${storyLink(name)}</td><td class="lvl">${esc(storyDate.get(name) ?? '')}</td></tr>`);
       const heading = `<p class="tbl-summary">${components.length} component stories</p>`;
       const tbl = tableSection('tbl-components', heading, ['Story', 'Date'], rows, `${slug}.json`, 'components', 'cols2');
-      content.push(tbl.html);
+      main.push(tbl.html);
       if (tbl.overflow) overflow['components'] = tbl.overflow;
     }
 
@@ -809,8 +821,9 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
         active: '',
         body: `${sourceLine('story', s.name)}<article class="doc ${isCollection ? 'type-collection' : 'type-story'}">
 <div class="doc-grid">
-<div class="doc-content">${content.filter(Boolean).join('\n')}</div>
+<div class="doc-intro">${intro.filter(Boolean).join('\n')}</div>
 <aside class="doc-aside">${aside.filter(Boolean).join('\n') || '&nbsp;'}</aside>
+<div class="doc-main">${main.filter(Boolean).join('\n')}</div>
 </div>
 </article>`,
         version,
