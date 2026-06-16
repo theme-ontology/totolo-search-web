@@ -314,23 +314,28 @@
     });
 
     function elementsFor(root) {
+      var SEP = '';
       var reach = descend(root);
       var internal = Object.keys(reach).filter(function (n) { return !isLeaf(n); });
       var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
+      var shownBundles = bundleList.filter(function (b) { return b.parents.some(function (p) { return inGraph[p]; }); });
       var els = [];
-      // ELK only: cluster internal siblings that share the exact same parent-set into a compound
-      // container, so they pack tightly together. (dagre can't lay out compounds.)
+
+      // ELK only: cluster everything sharing the exact same parent-set — internal siblings AND the
+      // leaf bundle for that set — into one compound box (dagre can't lay out compounds).
       var groupOf = {};
       if (useElk) {
-        var byKey = {};
-        internal.forEach(function (n) { var ps = (parentsOf[n] || []).slice().sort(); if (!ps.length) return; (byKey[ps.join('')] = byKey[ps.join('')] || []).push(n); });
-        Object.keys(byKey).forEach(function (k) {
-          if (byKey[k].length < 2) return;
+        var members = {};
+        internal.forEach(function (n) { var ps = (parentsOf[n] || []).slice().sort(); if (!ps.length) return; var k = ps.join(SEP); (members[k] = members[k] || []).push(n); });
+        shownBundles.forEach(function (b) { if (!b.parents.length) return; var k = b.parents.join(SEP); (members[k] = members[k] || []).push(b.id); });
+        Object.keys(members).forEach(function (k) {
+          if (members[k].length < 2) return;
           var gid = 'grp:' + k;
           els.push({ data: { id: gid, group: true } });
-          byKey[k].forEach(function (n) { groupOf[n] = gid; });
+          members[k].forEach(function (id) { groupOf[id] = gid; });
         });
       }
+
       // Internal nodes — one per theme. (bg = fill@0.5, bord = border@0.8, both onto white.)
       internal.forEach(function (n) {
         var col = colorForNode(n);
@@ -339,41 +344,42 @@
         var g = gradData(n, 0.5); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
         els.push({ data: d, classes: g ? 'multi' : '' });
       });
-      // Edges: an incoming edge to a grouped node attaches to its group box instead, deduped so a
-      // parent reaches the whole box with one edge; ungrouped nodes connect directly.
+      // Leaf bundles (subtle dashed nodes), grouped with their same-parent internal siblings.
+      shownBundles.forEach(function (b) {
+        var rep = b.leaves.slice().sort()[0];
+        var bcol = colorForNode(rep);
+        var d = { id: b.id, label: rep + (b.leaves.length > 1 ? '  +' + (b.leaves.length - 1) : ''), color: bcol, bg: mixWhite(bcol, 0.32), bord: mixWhite(bcol, 0.9) };
+        if (groupOf[b.id]) d.parent = groupOf[b.id];
+        var g = gradData(rep, 0.32); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
+        els.push({ data: d, classes: 'bundle' + (g ? ' multi' : '') });
+      });
+
+      // Edges: incoming edges to a grouped child attach to its group box instead, deduped so each
+      // parent reaches the whole box with one edge; ungrouped nodes/bundles connect directly.
       var edgeSeen = {};
-      internal.forEach(function (n) {
-        var tgt = groupOf[n] || n;
-        (parentsOf[n] || []).forEach(function (p) {
+      function addEdges(childId, parents) {
+        var tgt = groupOf[childId] || childId;
+        parents.forEach(function (p) {
           if (!inGraph[p] || p === tgt) return;
-          var key = p + '' + tgt;
+          var key = p + SEP + tgt;
           if (edgeSeen[key]) return; edgeSeen[key] = true;
           els.push({ data: { id: 'e:' + key, source: p, target: tgt } });
         });
-      });
-      // Leaf bundles whose parent-set touches this subgraph.
-      bundleList.forEach(function (b) {
-        var ph = b.parents.filter(function (p) { return inGraph[p]; });
-        if (!ph.length) return;
-        var rep = b.leaves.slice().sort()[0];
-        var label = rep + (b.leaves.length > 1 ? '  +' + (b.leaves.length - 1) : '');
-        var bcol = colorForNode(rep);
-        var d = { id: b.id, label: label, color: bcol, bg: mixWhite(bcol, 0.32), bord: mixWhite(bcol, 0.9) };
-        var g = gradData(rep, 0.32); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
-        els.push({ data: d, classes: 'bundle' + (g ? ' multi' : '') });
-        ph.forEach(function (p) { els.push({ data: { id: p + '→' + b.id, source: p, target: b.id } }); });
-      });
+      }
+      internal.forEach(function (n) { addEdges(n, parentsOf[n] || []); });
+      shownBundles.forEach(function (b) { addEdges(b.id, b.parents); });
       return els;
     }
-
     function layout() {
       var opts;
       if (useElk) {
-        opts = { name: 'elk', fit: true, padding: 30, elk: {
-          'algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-          'elk.layered.spacing.nodeNodeBetweenLayers': 60, 'elk.spacing.nodeNode': 4,
-          'elk.padding': '[top=8,left=8,bottom=8,right=8]',
-          'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', 'elk.layered.spacing.edgeNodeBetweenLayers': 12 } };
+        opts = { name: 'elk', fit: true, padding: 30,
+          // Large spacing between top-level siblings (between groups); tight inside each compound.
+          nodeLayoutOptions: function (n) { return n.isParent() ? { 'elk.spacing.nodeNode': '3', 'elk.padding': '[top=6,left=6,bottom=6,right=6]' } : {}; },
+          elk: {
+            'algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+            'elk.layered.spacing.nodeNodeBetweenLayers': 60, 'elk.spacing.nodeNode': 34,
+            'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', 'elk.layered.spacing.edgeNodeBetweenLayers': 12 } };
       } else if (window.cytoscapeDagre) {
         opts = { name: 'dagre', rankDir: 'LR', nodeSep: 9, rankSep: 80, edgeSep: 5, ranker: 'tight-tree', animate: true, animationDuration: 350, fit: true, padding: 30 };
       } else {
