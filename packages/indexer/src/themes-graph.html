@@ -24,8 +24,7 @@
   .legend { font-size: .72rem; color: #868e96; display: inline-flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
   .legend span { display: inline-flex; align-items: center; gap: .3rem; }
   .legend .sw { width: 10px; height: 10px; border-radius: 50%; }
-  .legend .multi { width: 13px; height: 13px; border-radius: 3px; background: linear-gradient(135deg, var(--c-human) 0 50%, var(--c-nat) 50% 100%); }
-  .legend .leafsw { width: 13px; height: 11px; border-radius: 3px; border: 1.4px dashed #adb5bd; background: #f1f3f5; }
+  .leaf-toggle { font-size: .78rem; color: #495057; display: inline-flex; align-items: center; gap: .3rem; cursor: pointer; }
 
   .body { flex: 1; min-height: 0; display: flex; }
   /* Root tree menu */
@@ -81,9 +80,8 @@
     <span><span class="sw" style="background:var(--c-human)"></span>the human world</span>
     <span><span class="sw" style="background:var(--c-soc)"></span>society</span>
     <span><span class="sw" style="background:var(--c-nat)"></span>the natural world</span>
-    <span><span class="multi"></span>multiple roots</span>
-    <span><span class="leafsw"></span>grouped leaves</span>
   </span>
+  <label class="leaf-toggle"><input type="checkbox" id="show-leaves"> Show leaves</label>
   <button class="btn" id="reset">Reset view</button>
 </header>
 <div class="body">
@@ -93,7 +91,7 @@
     <div id="loading">Loading theme graph…</div>
     <div id="err"></div>
     <div id="crumbs"></div>
-    <div id="hint">Solid nodes = themes, dashed = leaves grouped by shared parents · click to inspect / focus · scroll to zoom · drag to pan</div>
+    <div id="hint">Click a node to inspect / focus its subtree · toggle “Show leaves” for leaf themes · scroll to zoom · drag to pan</div>
     <aside id="panel"></aside>
   </div>
 </div>
@@ -320,7 +318,7 @@
       var reach = descend(root);
       var internal = Object.keys(reach).filter(function (n) { return !isLeaf(n); });
       var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
-      var shownBundles = bundleList.filter(function (b) { return b.parents.some(function (p) { return inGraph[p]; }); });
+      var shownBundles = showLeaves ? bundleList.filter(function (b) { return b.parents.some(function (p) { return inGraph[p]; }); }) : [];
       var els = [];
 
       // ELK only: cluster everything sharing the same set of IN-GRAPH parents — internal siblings
@@ -429,6 +427,8 @@
     }
     function unfocus() { focused = null; cy.batch(function () { cy.elements().forEach(function (el) { el.style('display', 'element'); }); }); layout(); }
     document.getElementById('reset').addEventListener('click', function () { unfocus(); closePanel(); cy.fit(undefined, 40); });
+    var showLeaves = false;
+    document.getElementById('show-leaves').addEventListener('change', function (e) { showLeaves = e.target.checked; selectRoot(active); });
 
     // ── Side panel ──────────────────────────────────────────────────────────────
     var panel = document.getElementById('panel');
