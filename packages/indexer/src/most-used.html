@@ -9,16 +9,16 @@
 <style>
   :root { --minor:#bcd9f0; --major:#5b9bd5; --choice:#1f5c99; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; }
-  header.bar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
-  header.bar h1 { font-size: 1rem; font-weight: 700; margin: 0; letter-spacing: -.2px; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
+  header.bar { flex: none; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
+  header.bar h1 { font-size: 1rem; font-weight: 700; margin: 0; line-height: 1.4; letter-spacing: -.2px; }
   header.bar a.home { color: #495057; text-decoration: none; font-size: .85rem; }
   header.bar a.home:hover { text-decoration: underline; }
   .controls { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: .85rem; color: #495057; margin: 0 0 1.2rem; }
   .controls .ctitle { font-weight: 600; color: #343a40; }
   .controls label { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
   .controls .key { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-  main { max-width: 1180px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+  main { flex: 1; min-height: 0; overflow: auto; width: 100%; max-width: 1180px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
   .cols { display: grid; grid-template-columns: 1fr; gap: 2rem; }
   @media (min-width: 920px) { .cols { grid-template-columns: 1fr 1fr; } }
   section h2 { font-size: 1rem; font-weight: 700; margin: 0 0 .8rem; }
