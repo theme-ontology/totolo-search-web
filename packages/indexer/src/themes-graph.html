@@ -373,7 +373,7 @@
       var edgeSeen = {};
       function addEdges(childId, parents) {
         var tgt = groupOf[childId] || childId;
-        var cls = groupOf[childId] ? 'togrp' : '';
+        var cls = (groupOf[childId] && groupOf[childId].slice(0, 4) === 'grp:') ? 'togrp' : '';
         parents.forEach(function (p) {
           if (!inGraph[p] || p === tgt) return;
           var key = p + SEP + tgt;
