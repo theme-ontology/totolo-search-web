@@ -284,7 +284,7 @@
           'border-width': 1.2, 'border-color': 'data(bord)',
           'label': 'data(label)', 'color': '#212529',
           'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
-          'text-max-width': 130, 'width': 'label', 'height': 'label', 'padding': '7px',
+          'text-max-width': 220, 'width': 'label', 'height': 'label', 'padding': '6px',
           'shape': 'round-rectangle', 'min-zoomed-font-size': 7 } },
         // Multi-domain node: fill split between its domains' (white-flattened) colours diagonally.
         { selector: 'node.multi', style: {
@@ -335,7 +335,7 @@
 
     function layout() {
       var opts = window.cytoscapeDagre
-        ? { name: 'dagre', rankDir: 'LR', nodeSep: 18, rankSep: 70, edgeSep: 8, animate: true, animationDuration: 350, fit: true, padding: 30 }
+        ? { name: 'dagre', rankDir: 'LR', nodeSep: 9, rankSep: 80, edgeSep: 5, ranker: 'tight-tree', animate: true, animationDuration: 350, fit: true, padding: 30 }
         : { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
       cy.layout(opts).run();
     }
