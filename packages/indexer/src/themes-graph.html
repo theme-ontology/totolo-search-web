@@ -67,6 +67,8 @@
 <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
 <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+<script src="https://unpkg.com/elkjs@0.9.3/lib/elk.bundled.js"></script>
+<script src="https://unpkg.com/cytoscape-elk@2.3.0"></script>
 </head>
 <body>
 <header class="bar">
@@ -111,6 +113,10 @@
   var errEl = document.getElementById('err'), loadEl = document.getElementById('loading');
   function fail(msg) { loadEl.style.display = 'none'; errEl.style.display = 'flex'; errEl.textContent = msg; }
   if (!window.cytoscape) { fail('Could not load the graph library (cytoscape).'); return; }
+  // Prefer ELK (more compact layered layout + compound clustering); fall back to dagre, then
+  // cytoscape's built-in breadthfirst, so the page still renders if a CDN script is missing.
+  var useElk = false;
+  try { if (window.cytoscapeElk && window.ELK) { cytoscape.use(window.cytoscapeElk); useElk = true; } } catch (e) { useElk = false; }
   try { cytoscape.use(window.cytoscapeDagre); } catch (e) {}
 
   fetch('../themes-graph.json', { cache: 'no-cache' })
@@ -293,6 +299,10 @@
         // Leaf-bundle node (one or more leaves sharing a parent-set): dashed, lighter.
         { selector: 'node.bundle', style: {
           'border-style': 'dashed', 'font-size': 10, 'color': '#495057' } },
+        // Compound container grouping same-parent siblings (ELK): faint, unobtrusive.
+        { selector: ':parent', style: {
+          'background-color': '#868e96', 'background-opacity': 0.05, 'border-width': 1, 'border-color': '#dee2e6',
+          'border-opacity': 1, 'shape': 'round-rectangle', 'padding': '6px', 'label': '' } },
         { selector: 'edge', style: {
           'width': 1.4, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle-backcurve', 'arrow-scale': .9, 'curve-style': 'bezier',
@@ -308,10 +318,24 @@
       var internal = Object.keys(reach).filter(function (n) { return !isLeaf(n); });
       var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
       var els = [];
+      // ELK only: cluster internal siblings that share the exact same parent-set into a compound
+      // container, so they pack tightly together. (dagre can't lay out compounds.)
+      var groupOf = {};
+      if (useElk) {
+        var byKey = {};
+        internal.forEach(function (n) { var ps = (parentsOf[n] || []).slice().sort(); if (!ps.length) return; (byKey[ps.join('')] = byKey[ps.join('')] || []).push(n); });
+        Object.keys(byKey).forEach(function (k) {
+          if (byKey[k].length < 2) return;
+          var gid = 'grp:' + k;
+          els.push({ data: { id: gid, group: true } });
+          byKey[k].forEach(function (n) { groupOf[n] = gid; });
+        });
+      }
       // Internal nodes — one per theme. (bg = fill@0.5, bord = border@0.8, both onto white.)
       internal.forEach(function (n) {
         var col = colorForNode(n);
         var d = { id: n, label: n, color: col, bg: mixWhite(col, 0.5), bord: mixWhite(col, 0.8) };
+        if (groupOf[n]) d.parent = groupOf[n];
         var g = gradData(n, 0.5); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
         els.push({ data: d, classes: g ? 'multi' : '' });
       });
@@ -334,9 +358,17 @@
     }
 
     function layout() {
-      var opts = window.cytoscapeDagre
-        ? { name: 'dagre', rankDir: 'LR', nodeSep: 9, rankSep: 80, edgeSep: 5, ranker: 'tight-tree', animate: true, animationDuration: 350, fit: true, padding: 30 }
-        : { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
+      var opts;
+      if (useElk) {
+        opts = { name: 'elk', fit: true, padding: 30, elk: {
+          'algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+          'elk.layered.spacing.nodeNodeBetweenLayers': 60, 'elk.spacing.nodeNode': 10,
+          'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', 'elk.layered.spacing.edgeNodeBetweenLayers': 12 } };
+      } else if (window.cytoscapeDagre) {
+        opts = { name: 'dagre', rankDir: 'LR', nodeSep: 9, rankSep: 80, edgeSep: 5, ranker: 'tight-tree', animate: true, animationDuration: 350, fit: true, padding: 30 };
+      } else {
+        opts = { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
+      }
       cy.layout(opts).run();
     }
 
@@ -355,9 +387,9 @@
     var focused = null;
     function clearHi() { cy.elements().removeClass('hi faded'); }
     function highlightNeighborhood(node) { cy.elements().addClass('faded'); node.closedNeighborhood().removeClass('faded').addClass('hi'); }
-    cy.on('mouseover', 'node', function (e) { if (!focused) highlightNeighborhood(e.target); });
+    cy.on('mouseover', 'node', function (e) { if (e.target.isParent()) return; if (!focused) highlightNeighborhood(e.target); });
     cy.on('mouseout', 'node', function () { if (!focused) clearHi(); });
-    cy.on('tap', 'node', function (e) { openPanel(e.target); });
+    cy.on('tap', 'node', function (e) { if (e.target.isParent()) return; openPanel(e.target); });
     cy.on('tap', function (e) { if (e.target === cy) { closePanel(); if (!focused) clearHi(); } });
 
     function focusSubtree(name) {
