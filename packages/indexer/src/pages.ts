@@ -135,6 +135,10 @@ footer a { color: #adb5bd; }
 .stat .lbl { font-size: .78rem; color: #6c757d; text-transform: uppercase; letter-spacing: .04em; }
 .about { max-width: 680px; margin-top: 1.5rem; }
 .about p { line-height: 1.6; color: #343a40; margin-bottom: .9rem; }
+/* Subtle inline links: muted colour + light underline (kept for affordance/accessibility),
+   strengthening on hover — so links read as links without the bright-blue shout. */
+.about a { color: #3f6189; text-decoration: underline; text-decoration-color: #c7d0dc; text-underline-offset: 2px; }
+.about a:hover { text-decoration-color: #3f6189; }
 .figures { font-size: .92rem; color: #495057; line-height: 1.65; margin: 0 0 .9rem; max-width: 62ch; }
 .figures strong { color: #212529; font-weight: 700; }
 @media (min-width: 760px) {
@@ -412,7 +416,7 @@ function nf(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-function frontPage(raw: RawCorpus, version: string): string {
+function frontPage(raw: RawCorpus, version: string, themeSlug: Map<string, string>, storySlug: Map<string, string>): string {
   const themes = raw.themes ?? [];
   const stories = raw.stories ?? [];
   const collections = raw.collections ?? [];
@@ -438,6 +442,22 @@ function frontPage(raw: RawCorpus, version: string): string {
   const sorted = motivationLengths.slice().sort((a, b) => a - b);
   const p90 = sorted.length ? sorted[Math.floor(sorted.length * 0.9)] : 0;
 
+  // Concrete examples to link into the prose: the most-annotated theme, the story with the most
+  // themes, and a randomly chosen collection (re-rolled each build).
+  const themeUsage = new Map<string, number>();
+  let mostThemedStory: RawStory | null = null, mostThemedCount = -1;
+  for (const s of stories) {
+    const ths = s.themes ?? [];
+    if (ths.length > mostThemedCount) { mostThemedCount = ths.length; mostThemedStory = s; }
+    for (const a of ths) themeUsage.set(a.name, (themeUsage.get(a.name) ?? 0) + 1);
+  }
+  for (const c of collections) for (const a of (c.themes ?? [])) themeUsage.set(a.name, (themeUsage.get(a.name) ?? 0) + 1);
+  let mostUsedTheme = '', mostUsedCount = -1;
+  for (const [name, cnt] of themeUsage) if (cnt > mostUsedCount) { mostUsedCount = cnt; mostUsedTheme = name; }
+  const randomCollection = collections.length ? collections[Math.floor(Math.random() * collections.length)] : null;
+  const tLink = (name: string) => { const sl = themeSlug.get(name); return sl ? `<a href="${SITE_BASE}/theme/${sl}.html">${esc(name)}</a>` : esc(name); };
+  const sLink = (s: RawStory | null) => { if (!s) return ''; const sl = storySlug.get(s.name); const label = esc(s.title || s.name); return sl ? `<a href="${SITE_BASE}/story/${sl}.html">${label}</a>` : label; };
+
   const lede = `Contains ${nf(themes.length)} well-defined literary themes arranged in a hierarchy, annotated across ${nf(stories.length)} stories.`;
   const body = `<div class="front-grid">
   <div class="front-main">
@@ -448,8 +468,7 @@ function frontPage(raw: RawCorpus, version: string): string {
     </section>
     <div class="about">
       <p>The themes are arranged in a hierarchy: a tree-like graph, a directed acyclic graph, a taxonomy, but with extra features that make it an ontology. Each theme definition establishes the necessary and sufficient conditions for when that theme is present in a story.</p>
-      <p>Every story-theme association is weighted as <em>minor</em>, <em>major</em>, or <em>choice</em>, and comes with an explanation, the <em>motivation</em>, describing how the theme manifests in that story.</p>
-      <p class="figures">Each theme definition averages <strong>${avgThemeWords} words</strong>, every annotated story carries about <strong>${avgThemesPerStory} themes</strong>, and a typical motivation runs <strong>${avgMotivation} words</strong> — with the longest 10% reaching <strong>${p90} words</strong> or more.</p>
+      <p class="figures">Every story–theme association is weighted as <em>minor</em>, <em>major</em>, or <em>choice</em>, and comes with an explanation, the <em>motivation</em>, describing how the theme manifests in that story. Each theme definition averages <strong>${avgThemeWords} words</strong>, every annotated story carries about <strong>${avgThemesPerStory} themes</strong>, and a typical motivation runs <strong>${avgMotivation} words</strong>, with the longest 10% reaching <strong>${p90} words</strong> or more. For a taste, explore the most-used theme ${tLink(mostUsedTheme)}, the most-themed story ${sLink(mostThemedStory)}, or the collection ${sLink(randomCollection)}.</p>
       <p>The underlying data is open and maintained on <a href="https://github.com/theme-ontology/theming" target="_blank" rel="noopener">GitHub</a>. A Python package <a href="https://pypi.org/project/totolo/" target="_blank" rel="noopener">totolo</a> or an R package <a href="https://cran.r-project.org/package=stoRy" target="_blank" rel="noopener">stoRy</a> can download and analyse it.</p>
     </div>
   </div>
@@ -690,7 +709,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
 
   await writeFile(join(outDir, 'pages.css'), PAGE_CSS + '\n', 'utf-8');
   await writeFile(join(outDir, 'pages.js'), PAGES_JS + '\n', 'utf-8');
-  await writeFile(join(outDir, 'index.html'), frontPage(raw, version), 'utf-8');
+  await writeFile(join(outDir, 'index.html'), frontPage(raw, version, themeSlug, storySlug), 'utf-8');
   await writeFile(join(outDir, 'versions', 'index.html'), versionsPage(version), 'utf-8');
   await writeFile(join(outDir, 'robots.txt'),
     'User-agent: *\nDisallow: /master/\nDisallow: /versions/\n', 'utf-8');
