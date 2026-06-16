@@ -410,8 +410,20 @@
         opts = { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
       }
       var l = cy.layout(opts);
-      l.one('layoutstop', function () { spreadLeaves(); computeDivider(); updateDivider(); });
+      l.one('layoutstop', function () { spreadLeaves(); setEdgeDepth(); computeDivider(); updateDivider(); });
       l.run();
+    }
+
+    // Draw shorter (near) edges above longer (far) ones — so long edges to the leaf column sit
+    // beneath the local structure. z-index = -horizontal span.
+    function setEdgeDepth() {
+      cy.batch(function () {
+        cy.edges().forEach(function (e) {
+          var s = e.source(), t = e.target();
+          if (!s.length || !t.length) return;
+          e.style('z-index', -Math.round(Math.abs(t.position('x') - s.position('x'))));
+        });
+      });
     }
 
     // Push the far-right leaf column further out (extra level spacing) so it reads as its own band.
