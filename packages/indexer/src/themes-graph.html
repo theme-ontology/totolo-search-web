@@ -303,6 +303,8 @@
         { selector: ':parent', style: {
           'background-color': '#868e96', 'background-opacity': 0.05, 'border-width': 1, 'border-color': '#dee2e6',
           'border-opacity': 1, 'shape': 'round-rectangle', 'padding': '6px', 'label': '' } },
+        // Leaf-group container: subtler than internal groups (dashed, near-invisible fill).
+        { selector: 'node.lgrp', style: { 'background-opacity': 0.02, 'border-style': 'dashed', 'border-color': '#ced4da' } },
         { selector: 'edge', style: {
           'width': 1.4, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle-backcurve', 'arrow-scale': .9, 'curve-style': 'bezier',
@@ -327,14 +329,22 @@
       var inGraphParents = function (ps) { return (ps || []).filter(function (p) { return inGraph[p]; }).sort(); };
       var groupOf = {};
       if (useElk) {
-        var members = {};
-        internal.forEach(function (n) { var ps = inGraphParents(parentsOf[n]); if (!ps.length) return; var k = ps.join(SEP); (members[k] = members[k] || []).push(n); });
-        shownBundles.forEach(function (b) { var ps = inGraphParents(b.parents); if (!ps.length) return; var k = ps.join(SEP); (members[k] = members[k] || []).push(b.id); });
-        Object.keys(members).forEach(function (k) {
-          if (members[k].length < 2) return;
+        // Internal siblings and leaf bundles are grouped in SEPARATE boxes, even when they share
+        // the same in-graph parent-set: internal -> 'grp:', leaves -> 'lgrp:' (subtler).
+        var membersI = {}, membersL = {};
+        internal.forEach(function (n) { var ps = inGraphParents(parentsOf[n]); if (!ps.length) return; var k = ps.join(SEP); (membersI[k] = membersI[k] || []).push(n); });
+        shownBundles.forEach(function (b) { var ps = inGraphParents(b.parents); if (!ps.length) return; var k = ps.join(SEP); (membersL[k] = membersL[k] || []).push(b.id); });
+        Object.keys(membersI).forEach(function (k) {
+          if (membersI[k].length < 2) return;
           var gid = 'grp:' + k;
           els.push({ data: { id: gid, group: true } });
-          members[k].forEach(function (id) { groupOf[id] = gid; });
+          membersI[k].forEach(function (id) { groupOf[id] = gid; });
+        });
+        Object.keys(membersL).forEach(function (k) {
+          if (membersL[k].length < 2) return;
+          var gid = 'lgrp:' + k;
+          els.push({ data: { id: gid, group: true }, classes: 'lgrp' });
+          membersL[k].forEach(function (id) { groupOf[id] = gid; });
         });
       }
 
