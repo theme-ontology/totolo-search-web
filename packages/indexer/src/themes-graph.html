@@ -410,7 +410,7 @@
         opts = { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
       }
       var l = cy.layout(opts);
-      l.one('layoutstop', function () { spreadLeaves(); setEdgeDepth(); computeDivider(); updateDivider(); });
+      l.one('layoutstop', function () { spreadLeaves(); packLeaves(); cy.fit(undefined, 30); setEdgeDepth(); computeDivider(); updateDivider(); });
       l.run();
     }
 
@@ -434,7 +434,25 @@
       var leaves = cy.nodes('.bundle');
       if (!leaves.length) return;
       cy.batch(function () { leaves.positions(function (n) { var p = n.position(); return { x: p.x + 100, y: p.y }; }); });
-      cy.fit(undefined, 30);
+    }
+    // Re-pack the far-right leaf column tightly: small gaps within a leaf group, a slightly larger
+    // gap between groups (ELK can't set spacing per-layer). Group members stay contiguous.
+    function packLeaves() {
+      if (!showLeaves) return;
+      var leaves = cy.nodes('.bundle').toArray();
+      if (!leaves.length) return;
+      leaves.sort(function (a, b) { return a.position('y') - b.position('y'); });
+      var IN = 3, BETWEEN = 13;
+      cy.batch(function () {
+        var cursor = leaves[0].boundingBox().y1, prevParent = null;
+        leaves.forEach(function (n, i) {
+          var h = n.boundingBox().h;
+          var par = n.isChild() ? n.parent().id() : ('_' + n.id());
+          if (i > 0) cursor += (par === prevParent ? IN : BETWEEN);
+          n.position('y', cursor + h / 2);
+          cursor += h; prevParent = par;
+        });
+      });
     }
     // Dotted ruler just left of the leaf column.
     function computeDivider() {
