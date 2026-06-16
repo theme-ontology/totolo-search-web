@@ -277,11 +277,12 @@
         { selector: 'node.bundle', style: {
           'border-style': 'dashed', 'border-opacity': 0.9, 'background-opacity': 0.32, 'font-size': 10, 'color': '#495057' } },
         { selector: 'edge', style: {
-          'width': 1.3, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
-          'target-arrow-shape': 'triangle', 'arrow-scale': .8, 'curve-style': 'bezier' } },
+          'width': 1.4, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
+          'target-arrow-shape': 'triangle-backcurve', 'arrow-scale': .9, 'curve-style': 'bezier',
+          'line-cap': 'round', 'target-distance-from-node': 2, 'source-endpoint': 'outside-to-node' } },
         { selector: '.faded', style: { 'opacity': 0.12 } },
         { selector: '.hi', style: { 'border-width': 3, 'border-color': '#343a40', 'z-index': 99 } },
-        { selector: 'edge.hi', style: { 'line-color': '#868e96', 'target-arrow-color': '#868e96', 'width': 2, 'opacity': 1 } }
+        { selector: 'edge.hi', style: { 'line-color': '#868e96', 'target-arrow-color': '#868e96', 'width': 2.2, 'opacity': 1 } }
       ]
     });
 
