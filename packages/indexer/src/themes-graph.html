@@ -306,7 +306,7 @@
         { selector: 'edge', style: {
           'width': 1.4, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle-backcurve', 'arrow-scale': .9, 'curve-style': 'bezier',
-          'line-cap': 'round', 'target-distance-from-node': 2, 'source-endpoint': 'outside-to-node' } },
+          'line-cap': 'round', 'source-endpoint': '50% 0%', 'target-endpoint': '-50% 0%' } },
         { selector: '.faded', style: { 'opacity': 0.12 } },
         { selector: '.hi', style: { 'border-width': 3, 'border-color': '#343a40', 'z-index': 99 } },
         { selector: 'edge.hi', style: { 'line-color': '#868e96', 'target-arrow-color': '#868e96', 'width': 2.2, 'opacity': 1 } }
@@ -339,8 +339,17 @@
         var g = gradData(n, 0.5); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
         els.push({ data: d, classes: g ? 'multi' : '' });
       });
+      // Edges: an incoming edge to a grouped node attaches to its group box instead, deduped so a
+      // parent reaches the whole box with one edge; ungrouped nodes connect directly.
+      var edgeSeen = {};
       internal.forEach(function (n) {
-        (parentsOf[n] || []).forEach(function (p) { if (inGraph[p]) els.push({ data: { id: p + '→' + n, source: p, target: n } }); });
+        var tgt = groupOf[n] || n;
+        (parentsOf[n] || []).forEach(function (p) {
+          if (!inGraph[p] || p === tgt) return;
+          var key = p + '' + tgt;
+          if (edgeSeen[key]) return; edgeSeen[key] = true;
+          els.push({ data: { id: 'e:' + key, source: p, target: tgt } });
+        });
       });
       // Leaf bundles whose parent-set touches this subgraph.
       bundleList.forEach(function (b) {
@@ -362,7 +371,8 @@
       if (useElk) {
         opts = { name: 'elk', fit: true, padding: 30, elk: {
           'algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-          'elk.layered.spacing.nodeNodeBetweenLayers': 60, 'elk.spacing.nodeNode': 10,
+          'elk.layered.spacing.nodeNodeBetweenLayers': 60, 'elk.spacing.nodeNode': 4,
+          'elk.padding': '[top=8,left=8,bottom=8,right=8]',
           'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF', 'elk.layered.spacing.edgeNodeBetweenLayers': 12 } };
       } else if (window.cytoscapeDagre) {
         opts = { name: 'dagre', rankDir: 'LR', nodeSep: 9, rankSep: 80, edgeSep: 5, ranker: 'tight-tree', animate: true, animationDuration: 350, fit: true, padding: 30 };
