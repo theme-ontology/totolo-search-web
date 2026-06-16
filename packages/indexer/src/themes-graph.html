@@ -35,10 +35,7 @@
   nav.tree .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   nav.tree .grp > .row { font-weight: 600; color: #343a40; }
   nav.tree .ult > .row { font-weight: 700; }   /* ultimate root: tinted row background set inline */
-  nav.tree .leaf.active > .row { outline: 2px solid #1971c2; outline-offset: -2px; }
-  nav.tree .caret { margin-left: auto; padding-left: .4rem; color: #adb5bd; transition: transform .15s; }
-  nav.tree li.collapsed > ul { display: none; }
-  nav.tree li.collapsed > .row .caret { transform: rotate(-90deg); }
+  nav.tree li.active > .row { outline: 2px solid #1971c2; outline-offset: -2px; }
   nav.tree ul ul { padding-left: .85rem; }
 
   .stage { position: relative; flex: 1; min-height: 0; }
@@ -251,12 +248,15 @@
 
     // ── Tree menu UI ──────────────────────────────────────────────────────────────
     var treeEl = document.getElementById('tree');
-    var leafEls = {};
+    var rowEls = {};
     function isUltimate(n) { return topRoots.indexOf(n) >= 0 || n === 'society'; }
     function ultTint(n) { var b = CAT_BASE[colorCat(n)] || [0, 0, 92]; return 'hsl(' + b[0] + ',' + Math.round(b[1] * 0.65) + '%,93%)'; }
+    // Every node — split groups included — is selectable: clicking renders the graph rooted there.
+    // The tree stays expanded (no collapse); nesting is shown by indentation.
     function renderMenu(nodes, ul, depth) {
       nodes.forEach(function (node) {
         var li = document.createElement('li');
+        li.classList.add(node.split ? 'grp' : 'leaf');
         var row = document.createElement('div'); row.className = 'row';
         var sw = '<span class="sw" style="background:' + colorForNode(node.name) + '"></span>';
         if (isUltimate(node.name)) {
@@ -264,18 +264,11 @@
           // Bleed the tint past the nesting indent to the panel's left edge (text stays put).
           if (depth > 0) { row.style.marginLeft = (-(depth * 0.85)) + 'rem'; row.style.paddingLeft = (0.6 + depth * 0.85) + 'rem'; }
         }
-        if (node.split) {
-          li.classList.add('grp');
-          row.innerHTML = sw + escapeHtml(node.name) + '<span class="caret">&#9662;</span>';
-          row.addEventListener('click', function () { li.classList.toggle('collapsed'); });
-          li.appendChild(row);
-          var sub = document.createElement('ul'); renderMenu(node.children, sub, depth + 1); li.appendChild(sub);
-        } else {
-          li.classList.add('leaf'); leafEls[node.name] = li;
-          row.innerHTML = sw + escapeHtml(node.name);
-          row.addEventListener('click', function () { selectRoot(node.name); });
-          li.appendChild(row);
-        }
+        rowEls[node.name] = li;
+        row.innerHTML = sw + escapeHtml(node.name);
+        row.addEventListener('click', function () { selectRoot(node.name); });
+        li.appendChild(row);
+        if (node.split) { var sub = document.createElement('ul'); renderMenu(node.children, sub, depth + 1); li.appendChild(sub); }
         ul.appendChild(li);
       });
     }
@@ -466,7 +459,7 @@
     var active = null;
     function selectRoot(root) {
       active = root; focused = null;
-      Object.keys(leafEls).forEach(function (n) { leafEls[n].classList.toggle('active', n === root); });
+      Object.keys(rowEls).forEach(function (n) { rowEls[n].classList.toggle('active', n === root); });
       document.getElementById('crumbs').textContent = root;
       cy.elements().remove();
       var built = elementsFor(root);
