@@ -279,7 +279,7 @@ document.addEventListener('click', function (e) {
 });
 `.trim();
 
-function navBar(active: 'search' | 'versions' | '', assetPrefix: string, showBrand = true): string {
+function navBar(active: 'search' | 'versions' | 'stats' | '', assetPrefix: string, showBrand = true): string {
   const github = `<a href="${REPO_URL}" target="_blank" rel="noopener">GitHub <span class="ext-mark" aria-hidden="true">&#8599;</span></a>`;
   const burger = `<input type="checkbox" id="nav-toggle" class="nav-toggle">
     <label for="nav-toggle" class="nav-burger" aria-label="Menu">&#9776;</label>`;
@@ -291,6 +291,7 @@ function navBar(active: 'search' | 'versions' | '', assetPrefix: string, showBra
     ${burger}
     <nav class="nav-links">
       <a href="${SITE_BASE}/search/">Search</a>
+      <a href="${SITE_BASE}/stats/">Stats</a>
       <a href="${SITE_BASE}/versions/">Versions</a>
       ${github}
     </nav>
@@ -301,12 +302,14 @@ function navBar(active: 'search' | 'versions' | '', assetPrefix: string, showBra
   // Elsewhere: Search is the prominent left item (filled pill); Versions/GitHub right.
   const aS = active === 'search' ? ' active' : '';
   const aV = active === 'versions' ? ' active' : '';
+  const aST = active === 'stats' ? ' active' : '';
   return `<header class="nav">
   <div class="nav-inner">
     <a class="nav-brand" href="${SITE_BASE}/"><img src="${assetPrefix}favicon.svg" alt="" width="26" height="26"><span>Theme Ontology</span></a>
     ${burger}
     <nav class="nav-links nav-main">
       <a class="nav-search${aS}" href="${SITE_BASE}/search/">Search</a>
+      <a class="nav-stats${aST}" href="${SITE_BASE}/stats/">Stats</a>
       <a class="nav-versions${aV}" href="${SITE_BASE}/versions/">Versions</a>
       ${github}
     </nav>
@@ -318,7 +321,7 @@ function htmlDoc(opts: {
   title: string;
   description: string;
   depth: number; // 0 = root (/index.html), 1 = /theme/, /story/, /versions/
-  active: 'search' | 'versions' | '';
+  active: 'search' | 'versions' | 'stats' | '';
   brand?: boolean; // show the logo + name in the nav (false on the front page)
   bodyClass?: string;
   extraHead?: string;
@@ -448,10 +451,10 @@ function frontPage(raw: RawCorpus, version: string): string {
       <p>The themes are arranged in a hierarchy: a tree-like graph, a directed acyclic graph, a taxonomy, but with extra features that make it an ontology. Each theme definition establishes the necessary and sufficient conditions for when that theme is present in a story.</p>
       <p>Every story-theme association is weighted as <em>minor</em>, <em>major</em>, or <em>choice</em>, and comes with an explanation, the <em>motivation</em>, describing how the theme manifests in that story.</p>
       <ul class="figures">
-        <li>~${avgThemeWords} words per theme definition</li>
-        <li>~${avgThemesPerStory} themes per annotated story</li>
-        <li>~${avgMotivation} words per motivation</li>
-        <li>longest 10% of motivations: ${p90}+ words</li>
+        <li>average ${avgThemeWords} words per theme definition</li>
+        <li>average ${avgThemesPerStory} themes per annotated story</li>
+        <li>average ${avgMotivation} words per motivation</li>
+        <li>longest 10% of motivations are ${p90}+ words</li>
       </ul>
       <p>The underlying data is open and maintained on <a href="https://github.com/theme-ontology/theming" target="_blank" rel="noopener">GitHub</a>. A Python package <a href="https://pypi.org/project/totolo/" target="_blank" rel="noopener">totolo</a> or an R package <a href="https://cran.r-project.org/package=stoRy" target="_blank" rel="noopener">stoRy</a> can download and analyse it.</p>
     </div>
@@ -592,7 +595,7 @@ function statsHubPage(version: string): string {
     title: 'Statistics · Theme Ontology',
     description: 'Theme Ontology statistics and visualizations.',
     depth: 1,
-    active: '',
+    active: 'stats',
     extraHead: '<meta name="robots" content="noindex">\n',
     body,
     version,

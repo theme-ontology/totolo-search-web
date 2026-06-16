@@ -333,6 +333,7 @@ async function main() {
     const siteBase = (import.meta.env.BASE_URL || '/').replace(/search\/?$/, '');
     document.querySelector('.nav-brand')?.setAttribute('href', siteBase);
     document.querySelector('.nav-search')?.setAttribute('href', `${siteBase}search/`);
+    document.querySelector('.nav-stats')?.setAttribute('href', `${siteBase}stats/`);
     document.querySelector('.nav-versions')?.setAttribute('href', `${siteBase}versions/`);
   }
 
