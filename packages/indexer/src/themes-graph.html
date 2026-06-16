@@ -309,8 +309,10 @@
           'width': 1.4, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle-backcurve', 'arrow-scale': .9, 'curve-style': 'bezier',
           'line-cap': 'round', 'source-endpoint': '50% 0%', 'target-endpoint': '-50% 0%' } },
-        // Edges into a group box: darker and heavier than edges to single nodes.
-        { selector: 'edge.togrp', style: { 'line-color': '#909aa3', 'target-arrow-color': '#909aa3', 'width': 2.2 } },
+        // Non-leaf (internal) edges are bold; leaf edges keep the light base style.
+        { selector: 'edge.core', style: { 'line-color': '#909aa3', 'target-arrow-color': '#909aa3', 'width': 2.2 } },
+        // Selection edges: drawn node-to-node (bypassing group boxes) for the focused sub-DAG.
+        { selector: 'edge.seledge', style: { 'line-color': '#495057', 'target-arrow-color': '#495057', 'width': 2, 'z-index': 9999, 'opacity': 1 } },
         { selector: '.faded', style: { 'opacity': 0.12 } },
         { selector: '.hi', style: { 'border-width': 3, 'border-color': '#343a40', 'z-index': 99 } },
         { selector: 'edge.hi', style: { 'line-color': '#868e96', 'target-arrow-color': '#868e96', 'width': 2.2, 'opacity': 1 } }
@@ -356,7 +358,7 @@
       var edgeSeen = {};
       function addEdges(childId, parents, arr) {
         var tgt = groupOf[childId] || childId;
-        var cls = (groupOf[childId] && groupOf[childId].slice(0, 4) === 'grp:') ? 'togrp' : '';
+        var cls = (arr === core) ? 'core' : '';
         parents.forEach(function (p) {
           if (!inGraph[p] || p === tgt) return;
           var key = p + SEP + tgt;
@@ -476,7 +478,13 @@
 
     // ── Interaction ───────────────────────────────────────────────────────────────
     var focused = null;
-    function clearHi() { cy.elements().removeClass('hi faded'); }
+    var selecting = false;
+    function clearHi() {
+      cy.remove('edge.seledge');
+      cy.edges().style('display', 'element');
+      cy.elements().removeClass('hi faded');
+      selecting = false;
+    }
     function addAnc(n, keep) { var st = [n]; while (st.length) { var x = st.pop(); (parentsOf[x] || []).forEach(function (p) { if (!keep[p]) { keep[p] = true; st.push(p); } }); } }
     function addDesc(n, keep) { var st = [n]; while (st.length) { var x = st.pop(); (childrenOf[x] || []).forEach(function (c) { if (!keep[c]) { keep[c] = true; st.push(c); } }); } }
     // Fade everything that is neither an ancestor nor a descendant of the focused node (computed
@@ -501,9 +509,34 @@
         });
         node.addClass('hi');
       });
+      return keep;
     }
-    cy.on('mouseover', 'node', function (e) { if (e.target.isParent()) return; if (!focused) highlightNeighborhood(e.target); });
-    cy.on('mouseout', 'node', function () { if (!focused) clearHi(); });
+    // Click selection: fade to the sub-DAG, then replace the (box-routed) edges within it with
+    // direct node-to-node edges so connections target the actual nodes inside group boxes.
+    function selectNode(node) {
+      if (node.isParent()) return;
+      clearHi();
+      var keep = highlightNeighborhood(node);
+      if (!keep) return;
+      selecting = true;
+      cy.batch(function () {
+        cy.edges().style('display', 'none'); // hide box-routed edges; show only the sub-DAG below
+        var seen = {};
+        function addSel(s, t) { if (s === t) return; var id = 'sel:' + s + '' + t; if (seen[id]) return; seen[id] = true; cy.add({ group: 'edges', data: { id: id, source: s, target: t }, classes: 'seledge' }); }
+        cy.nodes().forEach(function (n) {
+          if (n.isParent()) return;
+          if (n.hasClass('bundle')) {
+            var b = bundleById[n.id()]; if (!b || !b.leaves.some(function (l) { return keep[l]; })) return;
+            b.parents.forEach(function (p) { if (keep[p] && cy.getElementById(p).nonempty()) addSel(p, n.id()); });
+          } else {
+            if (!keep[n.id()]) return;
+            (parentsOf[n.id()] || []).forEach(function (p) { if (keep[p] && cy.getElementById(p).nonempty()) addSel(p, n.id()); });
+          }
+        });
+      });
+    }
+    cy.on('mouseover', 'node', function (e) { if (e.target.isParent()) return; if (!focused && !selecting) highlightNeighborhood(e.target); });
+    cy.on('mouseout', 'node', function () { if (!focused && !selecting) clearHi(); });
     cy.on('tap', 'node', function (e) { if (e.target.isParent()) return; openPanel(e.target); });
     cy.on('tap', function (e) { if (e.target === cy) { closePanel(); if (!focused) clearHi(); } });
 
@@ -551,7 +584,7 @@
       panel.querySelector('.close').addEventListener('click', closePanel);
       var fb = panel.querySelector('[data-focus]'); if (fb) fb.addEventListener('click', function () { focusSubtree(name); });
       Array.prototype.forEach.call(panel.querySelectorAll('[data-jump]'), function (chip) { chip.addEventListener('click', function () { jumpTo(chip.dataset.jump, name); }); });
-      clearHi(); highlightNeighborhood(node); cy.animate({ center: { eles: node }, duration: 250 });
+      selectNode(node); cy.animate({ center: { eles: node }, duration: 250 });
     }
 
     function openBundlePanel(node) {
@@ -570,7 +603,7 @@
       } else { var hh = themeHref(b.leaves[0]); if (hh) html += '<div class="actions"><a class="btn" href="' + hh + '">Open page &rarr;</a></div>'; }
       panel.innerHTML = html; panel.classList.add('open');
       panel.querySelector('.close').addEventListener('click', closePanel);
-      clearHi(); highlightNeighborhood(node); cy.animate({ center: { eles: node }, duration: 250 });
+      selectNode(node); cy.animate({ center: { eles: node }, duration: 250 });
     }
     function jumpTo(root, name) {
       selectRoot(root);
