@@ -43,6 +43,7 @@
 
   .stage { position: relative; flex: 1; min-height: 0; }
   #cy { position: absolute; inset: 0; background: #fbfcfd; }
+  #leaf-divider { position: absolute; top: 0; bottom: 0; border-left: 1.5px dashed #ced4da; pointer-events: none; display: none; }
   #hint { position: absolute; left: .8rem; bottom: .6rem; font-size: .72rem; color: #adb5bd; background: rgba(255,255,255,.8); padding: .15rem .4rem; border-radius: 4px; pointer-events: none; }
   #crumbs { position: absolute; left: .8rem; top: .6rem; font-size: .78rem; color: #495057; background: rgba(255,255,255,.85); padding: .2rem .5rem; border-radius: 4px; }
   #panel { position: absolute; top: .6rem; right: .6rem; width: 300px; max-height: calc(100% - 1.2rem); overflow: auto; background: #fff; border: 1px solid #dee2e6; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.08); padding: .8rem .9rem; font-size: .85rem; display: none; }
@@ -88,6 +89,7 @@
   <nav class="tree" id="tree"></nav>
   <div class="stage">
     <div id="cy"></div>
+    <div id="leaf-divider"></div>
     <div id="loading">Loading theme graph…</div>
     <div id="err"></div>
     <div id="crumbs"></div>
@@ -385,7 +387,16 @@
       if (useElk) {
         opts = { name: 'elk', fit: true, padding: 30,
           // Large spacing between top-level siblings (between groups); tight inside each compound.
-          nodeLayoutOptions: function (n) { return n.isParent() ? { 'elk.spacing.nodeNode': '3', 'elk.padding': '[top=6,left=6,bottom=6,right=6]' } : {}; },
+          // Leaf bundles (and their groups) are pinned to a separate final layer at the far right.
+          nodeLayoutOptions: function (n) {
+            if (n.isParent()) {
+              var o = { 'elk.spacing.nodeNode': '3', 'elk.padding': '[top=6,left=6,bottom=6,right=6]' };
+              if (n.hasClass('lgrp')) o['elk.layered.layering.layerConstraint'] = 'LAST_SEPARATE';
+              return o;
+            }
+            if (n.hasClass('bundle') && !n.isChild()) return { 'elk.layered.layering.layerConstraint': 'LAST_SEPARATE' };
+            return {};
+          },
           elk: {
             'algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
             'elk.layered.spacing.nodeNodeBetweenLayers': 60, 'elk.spacing.nodeNode': 34,
@@ -395,8 +406,30 @@
       } else {
         opts = { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
       }
-      cy.layout(opts).run();
+      var l = cy.layout(opts);
+      l.one('layoutstop', function () { computeDivider(); updateDivider(); });
+      l.run();
     }
+
+    // Dotted ruler between the internal graph and the far-right leaf column.
+    var dividerEl = document.getElementById('leaf-divider');
+    var dividerModelX = null;
+    function computeDivider() {
+      dividerModelX = null;
+      var leaves = cy.nodes('.bundle');
+      if (!leaves.length) return;
+      var internal = cy.nodes().filter(function (n) { return !n.isParent() && !n.hasClass('bundle'); });
+      if (!internal.length) return;
+      var leafMin = Infinity; leaves.forEach(function (n) { leafMin = Math.min(leafMin, n.boundingBox().x1); });
+      var intMax = -Infinity; internal.forEach(function (n) { intMax = Math.max(intMax, n.boundingBox().x2); });
+      if (intMax < leafMin) dividerModelX = (intMax + leafMin) / 2;
+    }
+    function updateDivider() {
+      if (dividerModelX === null) { dividerEl.style.display = 'none'; return; }
+      dividerEl.style.left = (dividerModelX * cy.zoom() + cy.pan().x) + 'px';
+      dividerEl.style.display = 'block';
+    }
+    cy.on('pan zoom resize', updateDivider);
 
     var active = null;
     function selectRoot(root) {
