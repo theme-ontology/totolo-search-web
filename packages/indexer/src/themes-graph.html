@@ -176,6 +176,22 @@
       });
     }
     function catBaseColor(cat) { var b = CAT_BASE[cat] || [0, 0, 60]; return 'hsl(' + b[0] + ',' + b[1] + '%,' + b[2] + '%)'; }
+    // Flatten an hsl() colour onto white at the given alpha, returning an opaque rgb() — so nodes
+    // render solid (no edges/overlap showing through) yet look identical to the old translucent fill.
+    function hslToRgb(h, s, l) {
+      s /= 100; l /= 100;
+      var c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2, r, g, b;
+      if (h < 60) { r = c; g = x; b = 0; } else if (h < 120) { r = x; g = c; b = 0; }
+      else if (h < 180) { r = 0; g = c; b = x; } else if (h < 240) { r = 0; g = x; b = c; }
+      else if (h < 300) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
+      return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+    }
+    function mixWhite(hslStr, a) {
+      var m = /hsl\(\s*(-?\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?\s*\)/.exec(hslStr);
+      if (!m) return hslStr;
+      var rgb = hslToRgb(((+m[1]) % 360 + 360) % 360, +m[2], +m[3]);
+      return 'rgb(' + rgb.map(function (c) { return Math.round(c * a + 255 * (1 - a)); }).join(',') + ')';
+    }
     // Per-category-root BFS recording each node's depth and which immediate child ("branch") of
     // the category root it descends from — used to vary hue per branch and lighten by depth.
     var branchCache = {};
@@ -218,10 +234,11 @@
     Object.keys(bundles).forEach(function (k) { bundleList.push(bundles[k]); bundleById[bundles[k].id] = bundles[k]; });
 
     // Diagonal hard-stop gradient data for a node spanning >1 ultimate domain (else null).
-    function gradData(n) {
+    // Stop colours are flattened onto white at `alpha` so the fill is opaque.
+    function gradData(n, alpha) {
       var doms = domainsOf(n);
       if (doms.length < 2) return null;
-      var cols = doms.map(catBaseColor), gc = [], gp = [], m = cols.length;
+      var cols = doms.map(function (c) { return mixWhite(catBaseColor(c), alpha); }), gc = [], gp = [], m = cols.length;
       for (var x = 0; x < m; x++) { gc.push(cols[x], cols[x]); gp.push(Math.round(x / m * 100) + '%', Math.round((x + 1) / m * 100) + '%'); }
       return { grad: gc.join(' '), gradPos: gp.join(' ') };
     }
@@ -263,19 +280,19 @@
       container: document.getElementById('cy'), wheelSensitivity: 0.2,
       style: [
         { selector: 'node', style: {
-          'background-color': 'data(color)', 'background-opacity': 0.5,
-          'border-width': 1.2, 'border-color': 'data(color)', 'border-opacity': 0.8,
+          'background-color': 'data(bg)',
+          'border-width': 1.2, 'border-color': 'data(bord)',
           'label': 'data(label)', 'color': '#212529',
           'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
           'text-max-width': 130, 'width': 'label', 'height': 'label', 'padding': '7px',
           'shape': 'round-rectangle', 'min-zoomed-font-size': 7 } },
-        // Multi-domain node: fill split between its domains' base colours along the diagonal.
+        // Multi-domain node: fill split between its domains' (white-flattened) colours diagonally.
         { selector: 'node.multi', style: {
           'background-fill': 'linear-gradient', 'background-gradient-direction': 'to-bottom-right',
           'background-gradient-stop-colors': 'data(grad)', 'background-gradient-stop-positions': 'data(gradPos)' } },
         // Leaf-bundle node (one or more leaves sharing a parent-set): dashed, lighter.
         { selector: 'node.bundle', style: {
-          'border-style': 'dashed', 'border-opacity': 0.9, 'background-opacity': 0.32, 'font-size': 10, 'color': '#495057' } },
+          'border-style': 'dashed', 'font-size': 10, 'color': '#495057' } },
         { selector: 'edge', style: {
           'width': 1.4, 'line-color': '#ced4da', 'target-arrow-color': '#ced4da',
           'target-arrow-shape': 'triangle-backcurve', 'arrow-scale': .9, 'curve-style': 'bezier',
@@ -291,10 +308,11 @@
       var internal = Object.keys(reach).filter(function (n) { return !isLeaf(n); });
       var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
       var els = [];
-      // Internal nodes — one per theme.
+      // Internal nodes — one per theme. (bg = fill@0.5, bord = border@0.8, both onto white.)
       internal.forEach(function (n) {
-        var d = { id: n, label: n, color: colorForNode(n) };
-        var g = gradData(n); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
+        var col = colorForNode(n);
+        var d = { id: n, label: n, color: col, bg: mixWhite(col, 0.5), bord: mixWhite(col, 0.8) };
+        var g = gradData(n, 0.5); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
         els.push({ data: d, classes: g ? 'multi' : '' });
       });
       internal.forEach(function (n) {
@@ -306,8 +324,9 @@
         if (!ph.length) return;
         var rep = b.leaves.slice().sort()[0];
         var label = rep + (b.leaves.length > 1 ? '  +' + (b.leaves.length - 1) : '');
-        var d = { id: b.id, label: label, color: colorForNode(rep) };
-        var g = gradData(rep); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
+        var bcol = colorForNode(rep);
+        var d = { id: b.id, label: label, color: bcol, bg: mixWhite(bcol, 0.32), bord: mixWhite(bcol, 0.9) };
+        var g = gradData(rep, 0.32); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
         els.push({ data: d, classes: 'bundle' + (g ? ' multi' : '') });
         ph.forEach(function (p) { els.push({ data: { id: p + '→' + b.id, source: p, target: b.id } }); });
       });
