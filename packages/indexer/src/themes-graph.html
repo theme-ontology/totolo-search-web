@@ -303,8 +303,8 @@
       bundleList.forEach(function (b) {
         var ph = b.parents.filter(function (p) { return inGraph[p]; });
         if (!ph.length) return;
-        var rep = b.leaves[0];
-        var label = b.leaves.length === 1 ? rep : b.leaves.length + ' themes';
+        var rep = b.leaves.slice().sort()[0];
+        var label = rep + (b.leaves.length > 1 ? '  +' + (b.leaves.length - 1) : '');
         var d = { id: b.id, label: label, color: colorForNode(rep) };
         var g = gradData(rep); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
         els.push({ data: d, classes: 'bundle' + (g ? ' multi' : '') });
@@ -388,10 +388,11 @@
     function openBundlePanel(node) {
       var b = bundleById[node.id()];
       var single = b.leaves.length === 1;
+      var rep = b.leaves.slice().sort()[0];
       var pars = b.parents.slice().sort();
       var html = '<button class="close" aria-label="Close">&times;</button>';
       html += '<div class="ptype">' + (single ? 'leaf theme' : b.leaves.length + ' leaf themes · shared parents') + '</div>';
-      html += '<h2>' + (single ? nameLink(b.leaves[0]) : escapeHtml(b.leaves.length + ' themes')) + '</h2>';
+      html += '<h2>' + nameLink(rep) + (single ? '' : ' <span style="color:#868e96;font-weight:400">+' + (b.leaves.length - 1) + ' more</span>') + '</h2>';
       if (pars.length) html += '<section><div class="lbl">Parent' + (pars.length > 1 ? 's' : '') + '</div><div>' + pars.map(nameLink).join(' · ') + '</div></section>';
       if (!single) {
         html += '<section><div class="lbl">Themes (' + b.leaves.length + ')</div><ul>';
