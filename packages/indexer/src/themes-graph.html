@@ -570,12 +570,10 @@
       if (kids.length) html += '<section><div class="lbl">Sub-themes (' + kids.length + ')</div><div>' + kids.map(nameLink).join(' · ') + '</div></section>';
       if (leaves) html += '<section><div class="lbl">Leaf themes</div><div>' + leaves + ' directly under this theme (shown as dashed nodes)</div></section>';
       html += '<div class="actions">';
-      if (kids.length || leaves) html += '<button class="btn" data-focus="1">Focus subtree</button>';
       var hh = themeHref(name); if (hh) html += '<a class="btn" href="' + hh + '">Open page &rarr;</a>';
       html += '</div>';
       panel.innerHTML = html; panel.classList.add('open');
       panel.querySelector('.close').addEventListener('click', closePanel);
-      var fb = panel.querySelector('[data-focus]'); if (fb) fb.addEventListener('click', function () { focusSubtree(name); });
       Array.prototype.forEach.call(panel.querySelectorAll('[data-jump]'), function (chip) { chip.addEventListener('click', function () { jumpTo(chip.dataset.jump, name); }); });
       selectNode(node); cy.animate({ center: { eles: node }, duration: 250 });
     }
