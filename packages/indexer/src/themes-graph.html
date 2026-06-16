@@ -321,13 +321,15 @@
       var shownBundles = bundleList.filter(function (b) { return b.parents.some(function (p) { return inGraph[p]; }); });
       var els = [];
 
-      // ELK only: cluster everything sharing the exact same parent-set — internal siblings AND the
-      // leaf bundle for that set — into one compound box (dagre can't lay out compounds).
+      // ELK only: cluster everything sharing the same set of IN-GRAPH parents — internal siblings
+      // AND the leaf bundle for that set — into one compound box (dagre can't lay out compounds).
+      // Parents outside the current subgraph (links to other roots) are ignored for grouping.
+      var inGraphParents = function (ps) { return (ps || []).filter(function (p) { return inGraph[p]; }).sort(); };
       var groupOf = {};
       if (useElk) {
         var members = {};
-        internal.forEach(function (n) { var ps = (parentsOf[n] || []).slice().sort(); if (!ps.length) return; var k = ps.join(SEP); (members[k] = members[k] || []).push(n); });
-        shownBundles.forEach(function (b) { if (!b.parents.length) return; var k = b.parents.join(SEP); (members[k] = members[k] || []).push(b.id); });
+        internal.forEach(function (n) { var ps = inGraphParents(parentsOf[n]); if (!ps.length) return; var k = ps.join(SEP); (members[k] = members[k] || []).push(n); });
+        shownBundles.forEach(function (b) { var ps = inGraphParents(b.parents); if (!ps.length) return; var k = ps.join(SEP); (members[k] = members[k] || []).push(b.id); });
         Object.keys(members).forEach(function (k) {
           if (members[k].length < 2) return;
           var gid = 'grp:' + k;
