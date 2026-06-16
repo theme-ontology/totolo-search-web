@@ -323,67 +323,50 @@
       var internal = Object.keys(reach).filter(function (n) { return !isLeaf(n); });
       var inGraph = {}; internal.forEach(function (n) { inGraph[n] = true; });
       var shownBundles = showLeaves ? bundleList.filter(function (b) { return b.parents.some(function (p) { return inGraph[p]; }); }) : [];
-      var els = [];
+      // core = internal nodes/groups/edges laid out by ELK; leaves appended afterward so the tall
+      // leaf column never stretches the internal levels.
+      var core = [], leaves = [];
 
-      // ELK only: cluster everything sharing the same set of IN-GRAPH parents — internal siblings
-      // AND the leaf bundle for that set — into one compound box (dagre can't lay out compounds).
-      // Parents outside the current subgraph (links to other roots) are ignored for grouping.
       var inGraphParents = function (ps) { return (ps || []).filter(function (p) { return inGraph[p]; }).sort(); };
       var groupOf = {};
       if (useElk) {
-        // Internal siblings and leaf bundles are grouped in SEPARATE boxes, even when they share
-        // the same in-graph parent-set: internal -> 'grp:', leaves -> 'lgrp:' (subtler).
         var membersI = {}, membersL = {};
         internal.forEach(function (n) { var ps = inGraphParents(parentsOf[n]); if (!ps.length) return; var k = ps.join(SEP); (membersI[k] = membersI[k] || []).push(n); });
         shownBundles.forEach(function (b) { var ps = inGraphParents(b.parents); if (!ps.length) return; var k = ps.join(SEP); (membersL[k] = membersL[k] || []).push(b.id); });
-        Object.keys(membersI).forEach(function (k) {
-          if (membersI[k].length < 2) return;
-          var gid = 'grp:' + k;
-          els.push({ data: { id: gid, group: true } });
-          membersI[k].forEach(function (id) { groupOf[id] = gid; });
-        });
-        Object.keys(membersL).forEach(function (k) {
-          if (membersL[k].length < 2) return;
-          var gid = 'lgrp:' + k;
-          els.push({ data: { id: gid, group: true }, classes: 'lgrp' });
-          membersL[k].forEach(function (id) { groupOf[id] = gid; });
-        });
+        Object.keys(membersI).forEach(function (k) { if (membersI[k].length < 2) return; var gid = 'grp:' + k; core.push({ data: { id: gid, group: true } }); membersI[k].forEach(function (id) { groupOf[id] = gid; }); });
+        Object.keys(membersL).forEach(function (k) { if (membersL[k].length < 2) return; var gid = 'lgrp:' + k; leaves.push({ data: { id: gid, group: true }, classes: 'lgrp' }); membersL[k].forEach(function (id) { groupOf[id] = gid; }); });
       }
 
-      // Internal nodes — one per theme. (bg = fill@0.5, bord = border@0.8, both onto white.)
       internal.forEach(function (n) {
         var col = colorForNode(n);
         var d = { id: n, label: n, color: col, bg: mixWhite(col, 0.5), bord: mixWhite(col, 0.8) };
         if (groupOf[n]) d.parent = groupOf[n];
         var g = gradData(n, 0.5); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
-        els.push({ data: d, classes: g ? 'multi' : '' });
+        core.push({ data: d, classes: g ? 'multi' : '' });
       });
-      // Leaf bundles (subtle dashed nodes), grouped with their same-parent internal siblings.
       shownBundles.forEach(function (b) {
         var rep = b.leaves.slice().sort()[0];
         var bcol = colorForNode(rep);
         var d = { id: b.id, label: rep + (b.leaves.length > 1 ? '  +' + (b.leaves.length - 1) : ''), color: bcol, bg: mixWhite(bcol, 0.32), bord: mixWhite(bcol, 0.9) };
         if (groupOf[b.id]) d.parent = groupOf[b.id];
         var g = gradData(rep, 0.32); if (g) { d.grad = g.grad; d.gradPos = g.gradPos; }
-        els.push({ data: d, classes: 'bundle' + (g ? ' multi' : '') });
+        leaves.push({ data: d, classes: 'bundle' + (g ? ' multi' : '') });
       });
 
-      // Edges: incoming edges to a grouped child attach to its group box instead, deduped so each
-      // parent reaches the whole box with one edge; ungrouped nodes/bundles connect directly.
       var edgeSeen = {};
-      function addEdges(childId, parents) {
+      function addEdges(childId, parents, arr) {
         var tgt = groupOf[childId] || childId;
         var cls = (groupOf[childId] && groupOf[childId].slice(0, 4) === 'grp:') ? 'togrp' : '';
         parents.forEach(function (p) {
           if (!inGraph[p] || p === tgt) return;
           var key = p + SEP + tgt;
           if (edgeSeen[key]) return; edgeSeen[key] = true;
-          els.push({ data: { id: 'e:' + key, source: p, target: tgt }, classes: cls });
+          arr.push({ data: { id: 'e:' + key, source: p, target: tgt }, classes: cls });
         });
       }
-      internal.forEach(function (n) { addEdges(n, parentsOf[n] || []); });
-      shownBundles.forEach(function (b) { addEdges(b.id, b.parents); });
-      return els;
+      internal.forEach(function (n) { addEdges(n, parentsOf[n] || [], core); });
+      shownBundles.forEach(function (b) { addEdges(b.id, b.parents, leaves); });
+      return { core: core, leaves: leaves };
     }
     function layout() {
       var opts;
@@ -410,7 +393,10 @@
         opts = { name: 'breadthfirst', directed: true, spacingFactor: 1.2, animate: true, fit: true, padding: 30 };
       }
       var l = cy.layout(opts);
-      l.one('layoutstop', function () { spreadLeaves(); packLeaves(); cy.fit(undefined, 30); setEdgeDepth(); computeDivider(); updateDivider(); });
+      l.one('layoutstop', function () {
+        if (showLeaves && pendingLeaves.length) { cy.add(pendingLeaves); positionLeaves(); }
+        cy.fit(undefined, 30); setEdgeDepth(); computeDivider(); updateDivider();
+      });
       l.run();
     }
 
@@ -429,28 +415,33 @@
     // Push the far-right leaf column further out (extra level spacing) so it reads as its own band.
     var dividerEl = document.getElementById('leaf-divider');
     var dividerModelX = null;
-    function spreadLeaves() {
-      if (!showLeaves) return;
-      var leaves = cy.nodes('.bundle');
-      if (!leaves.length) return;
-      cy.batch(function () { leaves.positions(function (n) { var p = n.position(); return { x: p.x + 100, y: p.y }; }); });
-    }
-    // Re-pack the far-right leaf column tightly: small gaps within a leaf group, a slightly larger
-    // gap between groups (ELK can't set spacing per-layer). Group members stay contiguous.
-    function packLeaves() {
-      if (!showLeaves) return;
-      var leaves = cy.nodes('.bundle').toArray();
-      if (!leaves.length) return;
-      leaves.sort(function (a, b) { return a.position('y') - b.position('y'); });
-      var IN = 1, BETWEEN = 1;
+    // Place the appended leaf nodes in a tight column to the right of the internal graph:
+    // items (leaf groups + standalone bundles) ordered by their parents' average y, stacked 1px.
+    function positionLeaves() {
+      var bundles = cy.nodes('.bundle');
+      if (!bundles.length) return;
+      var internal = cy.nodes().filter(function (n) { return !n.isParent() && !n.hasClass('bundle'); });
+      var maxX = -Infinity, minY = Infinity;
+      internal.forEach(function (n) { var bb = n.boundingBox(); maxX = Math.max(maxX, bb.x2); minY = Math.min(minY, bb.y1); });
+      if (!isFinite(maxX)) maxX = 0; if (!isFinite(minY)) minY = 0;
+      var colX = maxX + 140;
+      function avgY(coll) { if (!coll || !coll.length) return minY; var s = 0; coll.forEach(function (n) { s += n.position('y'); }); return s / coll.length; }
+      var items = [], seen = {};
+      bundles.forEach(function (b) {
+        if (b.isChild()) { var p = b.parent(); if (seen[p.id()]) return; seen[p.id()] = true; items.push({ members: p.children().toArray(), anchor: avgY(p.incomers('node')) }); }
+        else { items.push({ members: [b], anchor: avgY(b.incomers('node')) }); }
+      });
+      items.sort(function (a, b) { return a.anchor - b.anchor; });
+      var IN = 1, BETWEEN = 1, cursor = minY;
       cy.batch(function () {
-        var cursor = leaves[0].boundingBox().y1, prevParent = null;
-        leaves.forEach(function (n, i) {
-          var h = n.boundingBox().h;
-          var par = n.isChild() ? n.parent().id() : ('_' + n.id());
-          if (i > 0) cursor += (par === prevParent ? IN : BETWEEN);
-          n.position('y', cursor + h / 2);
-          cursor += h; prevParent = par;
+        items.forEach(function (it, idx) {
+          if (idx > 0) cursor += BETWEEN;
+          it.members.forEach(function (n, j) {
+            if (j > 0) cursor += IN;
+            var h = n.boundingBox().h;
+            n.position({ x: colX, y: cursor + h / 2 });
+            cursor += h;
+          });
         });
       });
     }
@@ -469,13 +460,16 @@
     }
     cy.on('pan zoom resize render', updateDivider);
 
+    var pendingLeaves = [];
     var active = null;
     function selectRoot(root) {
       active = root; focused = null;
       Object.keys(leafEls).forEach(function (n) { leafEls[n].classList.toggle('active', n === root); });
       document.getElementById('crumbs').textContent = root;
       cy.elements().remove();
-      cy.add(elementsFor(root));
+      var built = elementsFor(root);
+      cy.add(built.core);
+      pendingLeaves = built.leaves;
       layout();
       closePanel();
     }
