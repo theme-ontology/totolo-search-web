@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Most used · Theme Ontology</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --minor:#bcd9f0; --major:#5b9bd5; --choice:#1f5c99; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; }
+  header.bar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; position: sticky; top: 0; z-index: 5; }
+  header.bar h1 { font-size: 1rem; font-weight: 700; margin: 0; letter-spacing: -.2px; }
+  header.bar a.home { color: #495057; text-decoration: none; font-size: .85rem; }
+  header.bar a.home:hover { text-decoration: underline; }
+  .spacer { margin-left: auto; }
+  .controls { display: inline-flex; align-items: center; gap: .9rem; font-size: .82rem; color: #495057; flex-wrap: wrap; }
+  .controls label { display: inline-flex; align-items: center; gap: .3rem; cursor: pointer; }
+  .controls .key { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  main { max-width: 1180px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+  .cols { display: grid; grid-template-columns: 1fr; gap: 2rem; }
+  @media (min-width: 920px) { .cols { grid-template-columns: 1fr 1fr; } }
+  section h2 { font-size: 1rem; font-weight: 700; margin: 0 0 .8rem; }
+  .rows { display: flex; flex-direction: column; gap: .3rem; }
+  .row { display: grid; grid-template-columns: 12.5rem 1fr; align-items: center; gap: .6rem; font-size: .82rem; }
+  .row .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .label a { color: #343a40; text-decoration: none; }
+  .row .label a:hover { text-decoration: underline; }
+  .barwrap { display: flex; align-items: center; gap: .5rem; }
+  .bar { display: flex; height: 15px; border-radius: 3px; overflow: hidden; flex: 1; min-width: 0; background: #f1f3f5; }
+  .seg { height: 100%; }
+  .seg.minor { background: var(--minor); }
+  .seg.major { background: var(--major); }
+  .seg.choice { background: var(--choice); }
+  .count { color: #868e96; font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+  .expand { margin-top: .9rem; font-size: .8rem; padding: .3rem .8rem; border: 1px solid #ced4da; border-radius: 6px; background: #fff; cursor: pointer; color: #495057; }
+  .expand:hover { background: #f1f3f5; }
+  .expand[disabled] { opacity: .5; cursor: default; }
+  #err { padding: 2rem; color: #c92a2a; }
+  #loading { padding: 2rem; color: #868e96; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Most used</h1>
+  <a class="home" href="../">&larr; stats</a>
+  <a class="home" href="../../">site</a>
+  <span class="spacer"></span>
+  <span class="controls">
+    <label><input type="checkbox" id="lv-minor" checked><span class="key" style="background:var(--minor)"></span>minor</label>
+    <label><input type="checkbox" id="lv-major" checked><span class="key" style="background:var(--major)"></span>major</label>
+    <label><input type="checkbox" id="lv-choice" checked><span class="key" style="background:var(--choice)"></span>choice</label>
+  </span>
+</header>
+<main>
+  <div id="loading">Loading…</div>
+  <div id="err" style="display:none"></div>
+  <div class="cols" id="cols" style="display:none">
+    <section>
+      <h2>Most-used themes</h2>
+      <div class="rows" id="theme-rows"></div>
+      <button class="expand" id="theme-expand">Show more</button>
+    </section>
+    <section>
+      <h2>Most-themed stories</h2>
+      <div class="rows" id="story-rows"></div>
+      <button class="expand" id="story-expand">Show more</button>
+    </section>
+  </div>
+</main>
+<script>
+(function () {
+  var loadEl = document.getElementById('loading'), errEl = document.getElementById('err'), colsEl = document.getElementById('cols');
+  function fail(m) { loadEl.style.display = 'none'; errEl.style.display = 'block'; errEl.textContent = m; }
+
+  var LEVELS = ['minor', 'major', 'choice'];
+  var on = { minor: true, major: true, choice: true };
+  var limit = { theme: 20, story: 20 };
+
+  fetch('../most-used.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (data) { init(data); })
+    .catch(function (e) { fail('Could not load data: ' + e.message); });
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function init(data) {
+    loadEl.style.display = 'none'; colsEl.style.display = '';
+    var themes = data.themes || [], stories = data.stories || [];
+
+    function selTotal(r) { return (on.minor ? r.mi : 0) + (on.major ? r.ma : 0) + (on.choice ? r.ch : 0); }
+
+    function renderSection(rows, kind, container, hrefBase) {
+      var ranked = rows.map(function (r) { return r; }).filter(function (r) { return selTotal(r) > 0; });
+      ranked.sort(function (a, b) { return selTotal(b) - selTotal(a); });
+      var top = ranked.slice(0, limit[kind]);
+      var max = top.length ? selTotal(top[0]) : 1;
+      var html = '';
+      top.forEach(function (r) {
+        var total = selTotal(r);
+        var label = r.s ? '<a href="' + hrefBase + r.s + '.html">' + esc(r.n) + '</a>' : esc(r.n);
+        var segs = '';
+        LEVELS.forEach(function (lv) {
+          if (!on[lv]) return;
+          var v = lv === 'minor' ? r.mi : lv === 'major' ? r.ma : r.ch;
+          if (v <= 0) return;
+          segs += '<span class="seg ' + lv + '" style="width:' + (v / max * 100) + '%" title="' + v + ' ' + lv + '"></span>';
+        });
+        html += '<div class="row"><span class="label" title="' + esc(r.n) + '">' + label + '</span>'
+          + '<span class="barwrap"><span class="bar">' + segs + '</span><span class="count">' + total + '</span></span></div>';
+      });
+      container.innerHTML = html;
+      var btn = document.getElementById(kind + '-expand');
+      btn.disabled = limit[kind] >= ranked.length;
+      btn.textContent = btn.disabled ? 'All ' + ranked.length + ' shown' : 'Show more';
+    }
+
+    function renderAll() {
+      renderSection(themes, 'theme', document.getElementById('theme-rows'), '../../theme/');
+      renderSection(stories, 'story', document.getElementById('story-rows'), '../../story/');
+    }
+
+    LEVELS.forEach(function (lv) {
+      document.getElementById('lv-' + lv).addEventListener('change', function (e) { on[lv] = e.target.checked; limit.theme = 20; limit.story = 20; renderAll(); });
+    });
+    document.getElementById('theme-expand').addEventListener('click', function () { limit.theme *= 2; renderAll(); });
+    document.getElementById('story-expand').addEventListener('click', function () { limit.story *= 2; renderAll(); });
+
+    renderAll();
+  }
+})();
+</script>
+</body>
+</html>

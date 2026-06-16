@@ -603,6 +603,10 @@ function statsHubPage(version: string): string {
     <a href="themes-graph/" style="font-weight:600;color:#1971c2;text-decoration:none;">Theme graph &rarr;</a>
     <div style="color:#868e96;font-size:.88rem;margin-top:.15rem;">Interactive map of the theme hierarchy — colour-coded by ultimate root, with foldable leaves and per-root subgraphs.</div>
   </li>
+  <li style="padding:.6rem 0;border-bottom:1px solid #e9ecef;">
+    <a href="most-used/" style="font-weight:600;color:#1971c2;text-decoration:none;">Most used &rarr;</a>
+    <div style="color:#868e96;font-size:.88rem;margin-top:.15rem;">The most-used themes and most-themed stories, as stacked bars by weight (minor / major / choice).</div>
+  </li>
 </ul>`;
   return htmlDoc({
     title: 'Statistics · Theme Ontology',
@@ -745,6 +749,36 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     await writeFile(join(outDir, 'stats', 'themes-graph', 'index.html'), await readFile(graphSrc, 'utf-8'), 'utf-8');
   } catch {
     // The explorer page is an optional spike; its absence shouldn't fail the build.
+  }
+
+  // "Most used" page (/stats/most-used/): per-theme and per-story annotation counts split by
+  // weight (minor/major/choice). Ship all entries so the page can re-rank when levels are
+  // toggled. n=name/title, s=slug, mi/ma/ch=counts.
+  await mkdir(join(outDir, 'stats', 'most-used'), { recursive: true });
+  const themeCounts = new Map<string, { mi: number; ma: number; ch: number }>();
+  for (const s of [...(raw.stories ?? []), ...(raw.collections ?? [])]) {
+    for (const a of (s.themes ?? [])) {
+      const lv = a.level;
+      if (lv !== 'minor' && lv !== 'major' && lv !== 'choice') continue;
+      let c = themeCounts.get(a.name);
+      if (!c) { c = { mi: 0, ma: 0, ch: 0 }; themeCounts.set(a.name, c); }
+      if (lv === 'minor') c.mi++; else if (lv === 'major') c.ma++; else c.ch++;
+    }
+  }
+  const muThemes = [...themeCounts.entries()]
+    .map(([name, c]) => ({ n: name, s: themeSlug.get(name) ?? '', mi: c.mi, ma: c.ma, ch: c.ch }))
+    .filter(r => r.mi + r.ma + r.ch > 0);
+  const muStories = (raw.stories ?? []).map(s => {
+    let mi = 0, ma = 0, ch = 0;
+    for (const a of (s.themes ?? [])) { if (a.level === 'minor') mi++; else if (a.level === 'major') ma++; else if (a.level === 'choice') ch++; }
+    return { n: s.title || s.name, s: storySlug.get(s.name) ?? '', mi, ma, ch };
+  }).filter(r => r.mi + r.ma + r.ch > 0);
+  await writeFile(join(outDir, 'stats', 'most-used.json'), JSON.stringify({ themes: muThemes, stories: muStories }), 'utf-8');
+  try {
+    const muSrc = resolve(dirname(fileURLToPath(import.meta.url)), 'most-used.html');
+    await writeFile(join(outDir, 'stats', 'most-used', 'index.html'), await readFile(muSrc, 'utf-8'), 'utf-8');
+  } catch {
+    // optional
   }
 
   const writes: Array<{ path: string; html: string }> = [];
