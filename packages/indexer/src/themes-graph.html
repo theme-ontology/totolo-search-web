@@ -477,7 +477,31 @@
     // ── Interaction ───────────────────────────────────────────────────────────────
     var focused = null;
     function clearHi() { cy.elements().removeClass('hi faded'); }
-    function highlightNeighborhood(node) { cy.elements().addClass('faded'); node.closedNeighborhood().removeClass('faded').addClass('hi'); }
+    function addAnc(n, keep) { var st = [n]; while (st.length) { var x = st.pop(); (parentsOf[x] || []).forEach(function (p) { if (!keep[p]) { keep[p] = true; st.push(p); } }); } }
+    function addDesc(n, keep) { var st = [n]; while (st.length) { var x = st.pop(); (childrenOf[x] || []).forEach(function (c) { if (!keep[c]) { keep[c] = true; st.push(c); } }); } }
+    // Fade everything that is neither an ancestor nor a descendant of the focused node (computed
+    // from the data DAG, so it works across group boxes). Group boxes themselves are left alone.
+    function highlightNeighborhood(node) {
+      if (node.isParent()) return;
+      var keep = {};
+      if (node.hasClass('bundle')) { var bb = bundleById[node.id()]; if (bb) bb.leaves.forEach(function (l) { keep[l] = true; addAnc(l, keep); }); }
+      else { var nm = node.id(); keep[nm] = true; addAnc(nm, keep); addDesc(nm, keep); }
+      cy.batch(function () {
+        cy.elements().removeClass('faded hi');
+        cy.nodes().forEach(function (n) {
+          if (n.isParent()) return;
+          var kept;
+          if (n.hasClass('bundle')) { var b = bundleById[n.id()]; kept = b && b.leaves.some(function (l) { return keep[l]; }); }
+          else kept = !!keep[n.id()];
+          if (!kept) n.addClass('faded');
+        });
+        cy.edges().forEach(function (e) {
+          var s = e.source(), t = e.target();
+          if ((!s.isParent() && s.hasClass('faded')) || (!t.isParent() && t.hasClass('faded'))) e.addClass('faded');
+        });
+        node.addClass('hi');
+      });
+    }
     cy.on('mouseover', 'node', function (e) { if (e.target.isParent()) return; if (!focused) highlightNeighborhood(e.target); });
     cy.on('mouseout', 'node', function () { if (!focused) clearHi(); });
     cy.on('tap', 'node', function (e) { if (e.target.isParent()) return; openPanel(e.target); });
