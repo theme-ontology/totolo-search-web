@@ -442,7 +442,7 @@
       var leaves = cy.nodes('.bundle').toArray();
       if (!leaves.length) return;
       leaves.sort(function (a, b) { return a.position('y') - b.position('y'); });
-      var IN = 3, BETWEEN = 13;
+      var IN = 1, BETWEEN = 1;
       cy.batch(function () {
         var cursor = leaves[0].boundingBox().y1, prevParent = null;
         leaves.forEach(function (n, i) {
