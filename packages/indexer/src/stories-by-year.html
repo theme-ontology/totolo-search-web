@@ -300,16 +300,27 @@
     function hidePop() { pop.style.display = 'none'; }
     function ymd(y) { return y < 0 ? (-y) + ' BCE' : '' + y; }
 
-    // Click/tap a bar → list its stories (linked to their pages); content adapts to bar type.
-    function openPop(bin) {
+    // Click/tap a bar → list its stories (linked). filter: 'film' / 'other' (the clicked
+    // stack segment) or null (whole bar). Content also adapts to bar type.
+    function openPop(bin, filter) {
       var b = view[+bin.getAttribute('data-i')];
       if (!b || !b.count) return;
-      var films = b.film ? b.film.toLocaleString() + ' film' + (b.film === 1 ? '' : 's') : '';
-      var sub = b.count.toLocaleString() + ' stor' + (b.count === 1 ? 'y' : 'ies') + (films ? ' · ' + films : '');
+      var items = (b.items || []);
+      if (filter === 'film') items = items.filter(function (it) { return it.f; });
+      else if (filter === 'other') items = items.filter(function (it) { return !it.f; });
+      if (!items.length) return;
+      var n = items.length;
+      var sub;
+      if (filter === 'film') sub = n.toLocaleString() + ' film' + (n === 1 ? '' : 's');
+      else if (filter === 'other') sub = n.toLocaleString() + ' non-film' + (n === 1 ? '' : 's');
+      else {
+        var films = b.film ? b.film.toLocaleString() + ' film' + (b.film === 1 ? '' : 's') : '';
+        sub = b.count.toLocaleString() + ' stor' + (b.count === 1 ? 'y' : 'ies') + (films ? ' · ' + films : '');
+      }
       popTitle.innerHTML = esc(b.tip || b.label) + ' <span class="sub">' + sub + '</span>';
       var showYr = b.era !== 'year'; // a single year is redundant per row
       var html = '';
-      (b.items || []).forEach(function (it) {
+      items.forEach(function (it) {
         var name = esc(it.t);
         var label = it.s ? '<a href="../../story/' + it.s + '.html">' + name + '</a>' : '<span class="t">' + name + '</span>';
         html += '<li><span class="dot ' + (it.f ? 'film' : 'other') + '"></span>' + label
@@ -330,7 +341,10 @@
       var bin = e.target.closest ? e.target.closest('.bin') : null;
       if (!bin) return;
       e.stopPropagation();
-      openPop(bin);
+      // Clicking a stack segment lists just that subset; clicking elsewhere lists the whole bar.
+      var seg = e.target.closest('.seg');
+      var filter = seg ? (seg.classList.contains('film') ? 'film' : 'other') : null;
+      openPop(bin, filter);
     });
     pop.addEventListener('click', function (e) { e.stopPropagation(); }); // links still navigate
     document.getElementById('pop-close').addEventListener('click', hidePop);
