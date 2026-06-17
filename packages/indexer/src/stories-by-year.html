@@ -51,14 +51,16 @@
   .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; }
   .gline.top { border-top-color: #cdd3d9; }
   /* Gray dotted dividers at every millennium boundary. Scroll with the bars. */
-  .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
+  .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 2; pointer-events: none; }
   /* White vertical gridlines at the former decade/region shade boundaries. */
   .vline { position: absolute; top: 0; bottom: 0; border-left: 1px solid #fff; z-index: 1; pointer-events: none; }
+  /* Thick white zig-zag scale-break at granularity changes (above panel, below dotted line). */
+  .zigzag { position: absolute; top: 0; bottom: 0; width: 14px; transform: translateX(-50%); z-index: 1; pointer-events: none; }
   /* Single uniform light-grey panel behind the bars (scrolls with them). */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; background: var(--band-b); }
   /* Bins coarsen going back in time, so wider categories get wider columns. Bars are
      stacked: films (movie:) at the base + everything else on top, in two colours. */
-  .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 2; }
+  .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 3; }
   .bin.decade { flex-basis: 22px; }
   .bin.century { flex-basis: 26px; }
   .bin.mill { flex-basis: 66px; }
@@ -231,12 +233,12 @@
     // position. The by-year span is broken at the millennium (2000–present / 1950–1999) and
     // the 1st-millennium bucket is its own region. Ranges + edges come from the bins.
     var regionDefs = [
-      { key: 'y2', mode: 'by year', test: function (b) { return b.era === 'year' && b.lo >= 2000; } },
-      { key: 'y1', mode: 'by year', test: function (b) { return b.era === 'year' && b.lo < 2000; } },
-      { key: 'dec', mode: 'by decade', test: function (b) { return b.era === 'decade'; } },
-      { key: 'cen', mode: 'by century', test: function (b) { return b.era === 'century' && !b.bc && !b.mill; } },
-      { key: 'mil', mode: '1st mill.', test: function (b) { return b.mill; } },
-      { key: 'bce', mode: 'by century', test: function (b) { return b.era === 'century' && b.bc; } },
+      { key: 'y2', mode: 'by year', gran: 'year', test: function (b) { return b.era === 'year' && b.lo >= 2000; } },
+      { key: 'y1', mode: 'by year', gran: 'year', test: function (b) { return b.era === 'year' && b.lo < 2000; } },
+      { key: 'dec', mode: 'by decade', gran: 'decade', test: function (b) { return b.era === 'decade'; } },
+      { key: 'cen', mode: 'by century', gran: 'century', test: function (b) { return b.era === 'century' && !b.bc && !b.mill; } },
+      { key: 'mil', mode: '1st mill.', gran: 'millennium', test: function (b) { return b.mill; } },
+      { key: 'bce', mode: 'by century', gran: 'century', test: function (b) { return b.era === 'century' && b.bc; } },
     ];
     var present = [];
     regionDefs.forEach(function (rd) {
@@ -253,7 +255,7 @@
         : rd.key === 'bce' ? Math.abs(lo) + '–' + Math.abs(hi) + ' BCE'
           : rd.key === 'mil' ? lo + '–' + hi + ' CE'
             : lo + '–' + hi;
-      present.push({ mode: rd.mode, range: range, left: left });
+      present.push({ mode: rd.mode, range: range, left: left, gran: rd.gran });
     });
     present.sort(function (a, b) { return a.left - b.left; });
     var zoneHtml = '';
@@ -262,6 +264,21 @@
       var R = i === present.length - 1 ? total : present[i + 1].left;
       zoneHtml += '<div class="zlabel" style="left:' + L + 'px;width:' + (R - L) + 'px">'
         + '<span class="r">' + p.range + '</span><span class="m">' + p.mode + '</span></div>';
+    });
+
+    // Thick white zig-zag "scale-break" markers wherever the bucket granularity changes
+    // between regions (year→decade→century→millennium→century). Drawn full-height via a tiling
+    // SVG pattern so they're responsive; sit above the panel but below the dotted dividers.
+    var zzX = [];
+    for (var zi = 1; zi < present.length; zi++) {
+      if (present[zi].gran !== present[zi - 1].gran) zzX.push(present[zi].left);
+    }
+    var zzHtml = '';
+    zzX.forEach(function (x, k) {
+      zzHtml += '<svg class="zigzag" style="left:' + x + 'px"><defs>'
+        + '<pattern id="zz' + k + '" width="14" height="16" patternUnits="userSpaceOnUse">'
+        + '<polyline points="7,0 2,4 12,12 7,16" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>'
+        + '</pattern></defs><rect width="14" height="100%" fill="url(#zz' + k + ')"/></svg>';
     });
 
     // Plot: a single uniform light-grey panel. The former decade/region shade transitions
@@ -298,14 +315,15 @@
     // White vertical gridline at each former shade boundary (skip those a millennium divider
     // already marks, so the two don't double up).
     var vlineHtml = '';
+    var skipX = millX.concat(zzX); // a zig-zag or dotted divider already marks these
     cells.forEach(function (c, i) {
       if (i === 0) return;
       var x = binEls[c.start].offsetLeft;
-      if (!millX.some(function (m) { return Math.abs(m - x) <= 2; })) {
+      if (!skipX.some(function (m) { return Math.abs(m - x) <= 2; })) {
         vlineHtml += '<div class="vline" style="left:' + x + 'px"></div>';
       }
     });
-    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + vlineHtml + millHtml);
+    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + zzHtml + vlineHtml + millHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;
