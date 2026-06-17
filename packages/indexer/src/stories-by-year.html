@@ -317,8 +317,8 @@
     function ymd(y) { return y < 0 ? (-y) + ' BCE' : '' + y; }
 
     // Click/tap a bar → list its stories (linked). filter: 'film' / 'other' (the clicked
-    // stack segment) or null (whole bar). Content also adapts to bar type.
-    function openPop(bin, filter) {
+    // stack segment). `e` is the click event, used to anchor the popup at the tap point.
+    function openPop(bin, filter, e) {
       var b = view[+bin.getAttribute('data-i')];
       if (!b || !b.count) return;
       var items = (b.items || []);
@@ -345,10 +345,14 @@
       popList.innerHTML = html;
       popList.scrollTop = 0;
       pop.style.display = 'flex';
-      var r = bin.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-      var left = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
-      var top = r.top - ph - 8;
-      if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - ph - 8);
+      // Anchor at the tap/click point (the bar is a full-height column, so its rect can't be
+      // used) — placed above the point, or below if there isn't room, clamped to the viewport.
+      var pw = pop.offsetWidth, ph = pop.offsetHeight;
+      var ax = e ? e.clientX : window.innerWidth / 2;
+      var ay = e ? e.clientY : window.innerHeight / 2;
+      var left = Math.max(8, Math.min(ax - pw / 2, window.innerWidth - pw - 8));
+      var top = ay - ph - 12;
+      if (top < 8) top = Math.min(ay + 16, window.innerHeight - ph - 8);
       pop.style.left = left + 'px';
       pop.style.top = Math.max(8, top) + 'px';
     }
@@ -359,7 +363,7 @@
       var seg = e.target.closest ? e.target.closest('.seg') : null;
       if (!seg) return;
       e.stopPropagation();
-      openPop(seg.closest('.bin'), seg.classList.contains('film') ? 'film' : 'other');
+      openPop(seg.closest('.bin'), seg.classList.contains('film') ? 'film' : 'other', e);
     });
     pop.addEventListener('click', function (e) { e.stopPropagation(); }); // links still navigate
     document.getElementById('pop-close').addEventListener('click', hidePop);
