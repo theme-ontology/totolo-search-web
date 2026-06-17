@@ -43,15 +43,15 @@
   .yaxis .tick b { margin-right: 5px; font-size: .68rem; font-weight: 400; color: #868e96; font-variant-numeric: tabular-nums; }
   .yaxis .tick.max b { font-weight: 700; color: #495057; }
   .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; }
-  .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
+  /* width:max-content makes .bars as wide as its bars (not just the viewport), so the
+     gridlines (left:0/right:0) span the full scroll width rather than stopping at the edge. */
+  .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; width: max-content; min-width: 100%; }
   /* White horizontal gridlines, inside .bars so they span the full scroll width. Above the
      shading, below the bars. */
   .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; z-index: 1; pointer-events: none; }
   .gline.top { border-top-color: #cdd3d9; }
   /* Gray dotted dividers at every millennium boundary. Scroll with the bars. */
   .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
-  /* Faint label written on the (wider) 1st-millennium bucket's background. */
-  .mill-note { position: absolute; top: 0; left: 0; right: 0; padding: .45rem .25rem 0; text-align: center; font-size: .62rem; line-height: 1.2; color: #b6bbc2; z-index: 1; pointer-events: none; }
   /* Region/decade shading, scrolls with the bars (placed inside .bars), behind them. */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; }
   .zone-shade.z-a { background: var(--band-a); }
@@ -195,8 +195,7 @@
       var segs = '';
       if (other > 0) segs += '<div class="seg other" style="flex:' + other + '"></div>';
       if (b.film) segs += '<div class="seg film" style="flex:' + b.film + '"></div>';
-      var note = b.mill ? '<div class="mill-note">first millennium</div>' : '';
-      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div>' + note + '</div>';
+      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
       var lab = '';
       if (b.mill) lab = ''; // labelled on its own background instead
       else if (b.era === 'century' || b.era === 'decade') lab = b.label;
