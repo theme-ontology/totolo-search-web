@@ -8,7 +8,8 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root { --bar:#5b9bd5; --bar-hi:#1f5c99; --yw:3.4rem;
-          --z-bc:#efe9f5; --z-adc:#f3ece2; --z-dec:#e9eef4; --z-yr:#fafbfc; }
+          /* Subtle alternating grey banding for the regions; header strip a step darker. */
+          --band-a:#f1f3f5; --band-b:#f9fafb; --hdr-a:#e4e8eb; --hdr-b:#eceff2; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
   header.bar { flex: none; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
@@ -22,11 +23,9 @@
      in sync with the bars. Each label spans (and tints) its region's horizontal extent. */
   .zonebar { flex: none; height: 1.4rem; margin-left: calc(var(--yw) + 1px); overflow: hidden; }
   .zstrip { position: relative; height: 100%; }
-  .zlabel { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #6c757d; white-space: nowrap; overflow: hidden; border-radius: 3px 3px 0 0; }
-  .zlabel.z-bc { background: var(--z-bc); }
-  .zlabel.z-adc { background: var(--z-adc); }
-  .zlabel.z-dec { background: var(--z-dec); }
-  .zlabel.z-yr { background: var(--z-yr); }
+  .zlabel { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #495057; white-space: nowrap; overflow: hidden; }
+  .zlabel.z-a { background: var(--hdr-a); }
+  .zlabel.z-b { background: var(--hdr-b); }
 
   /* Chart: y-axis gutter + a horizontally scrollable plot of equal-gap bars. */
   .chart { flex: 1; min-height: 0; display: flex; }
@@ -48,10 +47,8 @@
   .zero-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
   /* Region shading, scrolls with the bars (placed inside .bars), behind them. */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; }
-  .zone-shade.z-bc { background: var(--z-bc); }
-  .zone-shade.z-adc { background: var(--z-adc); }
-  .zone-shade.z-dec { background: var(--z-dec); }
-  .zone-shade.z-yr { background: var(--z-yr); }
+  .zone-shade.z-a { background: var(--band-a); }
+  .zone-shade.z-b { background: var(--band-b); }
   /* Bins coarsen going back in time, so wider categories get wider columns. One bar colour. */
   .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 2; }
   .bin.decade { flex-basis: 22px; }
@@ -61,7 +58,7 @@
 
   /* X-axis tick labels, horizontal (never angled), mirroring the bar widths so each label
      centres under its bar; overlapping labels are dropped client-side. */
-  .xaxis { flex: none; height: 1.3rem; margin-left: calc(var(--yw) + 1px); }
+  .xaxis { flex: none; height: 1.3rem; margin-left: calc(var(--yw) + 1px); overflow: hidden; }
   .xstrip { display: flex; gap: 1px; padding: .25rem .3rem 0; min-width: 100%; }
   .xlab { flex: 0 0 9px; font-size: .65rem; color: #868e96; white-space: nowrap; overflow: visible; position: relative; }
   .xlab.decade { flex-basis: 22px; }
@@ -146,9 +143,12 @@
     yax.innerHTML = yh; grid.innerHTML = gh;
 
     // ── Bars + x-axis labels ──
+    // Inverted: newest first, so modern times are visible at load (scrollLeft 0) with the
+    // axis running back in time to the right.
+    var view = bins.slice().reverse();
     var barsEl = document.getElementById('bars'), xstrip = document.getElementById('xstrip');
     var bh = '', xh = '';
-    bins.forEach(function (b, i) {
+    view.forEach(function (b, i) {
       var hpct = (b.count / max) * 100;
       var cls = b.era === 'century' ? (b.bc ? ' century bc' : ' century') : (b.era === 'decade' ? ' decade' : ' year');
       bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%"></div></div>';
@@ -169,29 +169,36 @@
     }
 
     // ── Region shading (behind bars) + top annotations, measured from the laid-out bars. ──
+    // Detect each region's first bin, order them by screen position (works whichever way
+    // the axis runs), then shade contiguous bands with alternating greys + a header label.
     var regions = [
-      { sel: '.bin.bc', cls: 'z-bc', label: 'centuries BC' },
-      { sel: '.bin.century:not(.bc)', cls: 'z-adc', label: 'centuries AD' },
-      { sel: '.bin.decade', cls: 'z-dec', label: 'decades' },
-      { sel: '.bin.year', cls: 'z-yr', label: 'years' },
+      { sel: '.bin.bc', label: 'by century BCE' },
+      { sel: '.bin.century:not(.bc)', label: 'by century CE' },
+      { sel: '.bin.decade', label: 'by decade' },
+      { sel: '.bin.year', label: 'by year' },
     ];
     var present = [];
     regions.forEach(function (r) {
       var el = barsEl.querySelector(r.sel);
-      if (el) present.push({ r: r, left: el.offsetLeft });
+      if (el) present.push({ label: r.label, left: el.offsetLeft });
     });
+    present.sort(function (a, b) { return a.left - b.left; });
     var total = barsEl.scrollWidth;
     var shadeHtml = '', zoneHtml = '';
     present.forEach(function (p, i) {
       var L = i === 0 ? 0 : p.left;
       var R = i === present.length - 1 ? total : present[i + 1].left;
+      var band = (i % 2 === 0) ? 'z-a' : 'z-b';
       var st = 'left:' + L + 'px;width:' + (R - L) + 'px';
-      shadeHtml += '<div class="zone-shade ' + p.r.cls + '" style="' + st + '"></div>';
-      zoneHtml += '<div class="zlabel ' + p.r.cls + '" style="' + st + '">' + p.r.label + '</div>';
+      shadeHtml += '<div class="zone-shade ' + band + '" style="' + st + '"></div>';
+      zoneHtml += '<div class="zlabel ' + band + '" style="' + st + '">' + p.label + '</div>';
     });
-    // Year-0 divider at the BC/AD century boundary (left edge of the first AD century).
-    var adc = present.filter(function (p) { return p.r.cls === 'z-adc'; })[0];
-    if (adc) shadeHtml += '<div class="zero-line" style="left:' + adc.left + 'px"></div>';
+    // Year-0 divider: the shared boundary between the BCE and CE century bands, i.e. the
+    // leftmost edge of whichever of the two sits on the right.
+    var bcEl = barsEl.querySelector('.bin.bc'), ceEl = barsEl.querySelector('.bin.century:not(.bc)');
+    if (bcEl && ceEl) {
+      shadeHtml += '<div class="zero-line" style="left:' + Math.max(bcEl.offsetLeft, ceEl.offsetLeft) + 'px"></div>';
+    }
     barsEl.insertAdjacentHTML('afterbegin', shadeHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
@@ -206,7 +213,7 @@
     barsEl.addEventListener('mousemove', function (e) {
       var bin = e.target.closest ? e.target.closest('.bin') : null;
       if (!bin) { tip.style.opacity = 0; return; }
-      var b = bins[+bin.getAttribute('data-i')];
+      var b = view[+bin.getAttribute('data-i')];
       var noun = b.count === 1 ? 'story' : 'stories';
       tip.textContent = (b.tip || b.label) + ': ' + b.count.toLocaleString() + ' ' + noun;
       tip.style.opacity = 1;

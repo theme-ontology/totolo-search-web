@@ -122,10 +122,10 @@ function storiesByYear(stories: RawStory[]): {
   if (centStarts.length) {
     for (let c = Math.min(...centStarts); c <= 1800; c += 100) {
       const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
-      const range = c >= 0 ? `${c}–${c + 99}` : `${-c}–${-(c + 99)} BC`;
+      const range = c >= 0 ? `${c}–${c + 99} CE` : `${-c}–${-(c + 99)} BCE`;
       bins.push({
-        label: c >= 0 ? ord : `${ord} BC`,
-        tip: c >= 0 ? `${ord} century (${range})` : `${ord} century BC (${range})`,
+        label: c >= 0 ? ord : `${ord} BCE`,
+        tip: c >= 0 ? `${ord} century CE (${range})` : `${ord} century BCE (${range})`,
         count: centuryCount.get(c) ?? 0,
         era: 'century',
         ...(c < 0 ? { bc: true } : {}),
