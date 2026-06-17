@@ -69,6 +69,55 @@ function words(s: string | undefined): number {
   return (s ?? '').trim().split(/\s+/).filter(Boolean).length;
 }
 
+// Leading year of a story's date string ("2000-01-01" -> 2000, "458 BC" -> -458).
+function storyYear(date: string | undefined): number | null {
+  if (!date) return null;
+  const m = date.match(/\d{1,4}/);
+  if (!m) return null;
+  const y = parseInt(m[0], 10);
+  return /\bbc\b/i.test(date) ? -y : y;
+}
+
+// Histogram of story counts: one bin per year from 1900 onward, one bin per
+// century before that (only centuries that actually contain stories). Empty years
+// in [1900, maxYear] are kept so the recent axis stays continuous.
+function storiesByYear(stories: RawStory[]): {
+  total: number;
+  unknown: number;
+  bins: Array<{ label: string; short?: string; count: number; era: 'year' | 'century' }>;
+} {
+  const yearCount = new Map<number, number>();
+  const centuryCount = new Map<number, number>();
+  let total = 0, unknown = 0, maxYear = -Infinity;
+  for (const s of stories) {
+    const y = storyYear(s.date);
+    if (y === null) { unknown++; continue; }
+    total++;
+    if (y >= 1900) {
+      yearCount.set(y, (yearCount.get(y) ?? 0) + 1);
+      if (y > maxYear) maxYear = y;
+    } else {
+      const c = Math.floor(y / 100) * 100;
+      centuryCount.set(c, (centuryCount.get(c) ?? 0) + 1);
+    }
+  }
+  // A century starting at s spans [s, s+99]; full label oldest→newest (for the tooltip),
+  // plus a compact axis label ("1500s", "600s BC"). BC where negative.
+  const centLabel = (s: number): string =>
+    s >= 0 ? `${s}–${s + 99}` : `${-s}–${-(s + 99)} BC`;
+  const centShort = (s: number): string => (s >= 0 ? `${s}s` : `${-s}s BC`);
+  const bins: Array<{ label: string; short?: string; count: number; era: 'year' | 'century' }> = [];
+  for (const s of [...centuryCount.keys()].sort((a, b) => a - b)) {
+    bins.push({ label: centLabel(s), short: centShort(s), count: centuryCount.get(s) ?? 0, era: 'century' });
+  }
+  if (maxYear >= 1900) {
+    for (let y = 1900; y <= maxYear; y++) {
+      bins.push({ label: String(y), count: yearCount.get(y) ?? 0, era: 'year' });
+    }
+  }
+  return { total, unknown, bins };
+}
+
 // Small clipboard icon + a discrete button that copies the document name (handled by pages.js).
 const COPY_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
@@ -607,6 +656,10 @@ function statsHubPage(version: string): string {
     <a href="most-used/" style="font-weight:600;color:#1971c2;text-decoration:none;">Most used &rarr;</a>
     <div style="color:#868e96;font-size:.88rem;margin-top:.15rem;">The most-used themes and most-themed stories, as stacked bars by weight (minor / major / choice).</div>
   </li>
+  <li style="padding:.6rem 0;border-bottom:1px solid #e9ecef;">
+    <a href="stories-by-year/" style="font-weight:600;color:#1971c2;text-decoration:none;">Stories by year &rarr;</a>
+    <div style="color:#868e96;font-size:.88rem;margin-top:.15rem;">A histogram of how many stories fall in each year (from 1900) and century (before 1900).</div>
+  </li>
 </ul>`;
   return htmlDoc({
     title: 'Statistics · Theme Ontology',
@@ -777,6 +830,19 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
   try {
     const muSrc = resolve(dirname(fileURLToPath(import.meta.url)), 'most-used.html');
     await writeFile(join(outDir, 'stats', 'most-used', 'index.html'), await readFile(muSrc, 'utf-8'), 'utf-8');
+  } catch {
+    // optional
+  }
+
+  // "Stories by year" page (/stats/stories-by-year/): a histogram of how many stories
+  // fall in each year (1900 onward) / century (before 1900). First cut counts stories;
+  // later it can be split by story format / franchise.
+  await mkdir(join(outDir, 'stats', 'stories-by-year'), { recursive: true });
+  await writeFile(join(outDir, 'stats', 'stories-by-year.json'),
+    JSON.stringify({ lto: raw.lto, ...storiesByYear(raw.stories ?? []) }), 'utf-8');
+  try {
+    const sbySrc = resolve(dirname(fileURLToPath(import.meta.url)), 'stories-by-year.html');
+    await writeFile(join(outDir, 'stats', 'stories-by-year', 'index.html'), await readFile(sbySrc, 'utf-8'), 'utf-8');
   } catch {
     // optional
   }

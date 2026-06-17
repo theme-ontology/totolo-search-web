@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Stories by year · Theme Ontology</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --year:#5b9bd5; --century:#b08968; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
+  header.bar { flex: none; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
+  header.bar h1 { font-size: 1rem; font-weight: 700; margin: 0; line-height: 1.4; letter-spacing: -.2px; }
+  header.bar a.home { color: #495057; text-decoration: none; font-size: .85rem; }
+  header.bar a.home:hover { text-decoration: underline; }
+  main { flex: 1; min-height: 0; overflow: hidden; width: 100%; max-width: 1180px; margin: 0 auto; padding: 1.2rem 1rem 1rem; display: flex; flex-direction: column; }
+  .intro { font-size: .85rem; color: #495057; margin: 0 0 .4rem; }
+  .legend { display: flex; gap: 1.1rem; flex-wrap: wrap; font-size: .8rem; color: #495057; margin: 0 0 .9rem; }
+  .legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .legend i.year { background: var(--year); }
+  .legend i.century { background: var(--century); }
+  /* Chart: a fixed-height plot area with a y-axis gutter and a horizontally
+     scrollable strip of bars. Each bin is a flex column (bar + tick label). */
+  .chart { flex: 1; min-height: 0; display: flex; }
+  .yaxis { flex: none; width: 3.2rem; position: relative; font-size: .7rem; color: #868e96; }
+  .yaxis .tick { position: absolute; right: .4rem; transform: translateY(-50%); font-variant-numeric: tabular-nums; }
+  .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; }
+  .grid { position: absolute; inset: 0; pointer-events: none; }
+  .grid .gline { position: absolute; left: 0; right: 0; border-top: 1px dashed #eef0f2; }
+  .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
+  .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; }
+  .bin.century { flex-basis: 22px; }
+  .bin .bar { width: 100%; background: var(--year); border-radius: 2px 2px 0 0; min-height: 0; transition: background .1s; }
+  .bin.century .bar { background: var(--century); }
+  .bin:hover .bar { background: #1f5c99; }
+  .bin.century:hover .bar { background: #8a6b4f; }
+  /* Decade / century tick labels sit just under the axis, angled 45° so they don't
+     collide; most year bins are unlabelled (only decade marks + every century bin). */
+  .xaxis { flex: none; height: 3rem; }
+  .xstrip { display: flex; gap: 1px; padding: .2rem .3rem 0; min-width: 100%; }
+  .xlab { flex: 0 0 9px; font-size: .65rem; color: #868e96; white-space: nowrap; overflow: visible; position: relative; }
+  .xlab.century { flex-basis: 22px; }
+  .xlab span { position: absolute; left: 50%; top: 0; transform-origin: left top; transform: rotate(40deg); }
+  .xlab.century span { color: #8a6b4f; }
+  /* Floating tooltip following the hovered bar. */
+  #tip { position: fixed; z-index: 10; background: #212529; color: #fff; font-size: .75rem; padding: .25rem .5rem; border-radius: 4px; pointer-events: none; white-space: nowrap; opacity: 0; transition: opacity .08s; }
+  #err { padding: 2rem; color: #c92a2a; }
+  #loading { padding: 2rem; color: #868e96; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Stories by year</h1>
+  <a class="home" href="../">&larr; stats</a>
+  <a class="home" href="../../">site</a>
+</header>
+<main>
+  <p class="intro" id="intro">Loading…</p>
+  <div class="legend" id="legend" style="display:none">
+    <span><i class="year"></i>one year (1900 onward)</span>
+    <span><i class="century"></i>one century (before 1900)</span>
+  </div>
+  <div id="err" style="display:none"></div>
+  <div class="chart" id="chart" style="display:none">
+    <div class="yaxis" id="yaxis"></div>
+    <div class="plot" id="plot">
+      <div class="grid" id="grid"></div>
+      <div class="bars" id="bars"></div>
+    </div>
+  </div>
+  <div class="xaxis" id="xaxis" style="display:none"><div class="xstrip" id="xstrip"></div></div>
+</main>
+<div id="tip"></div>
+<script>
+(function () {
+  var introEl = document.getElementById('intro'), errEl = document.getElementById('err');
+  function fail(m) { introEl.style.display = 'none'; errEl.style.display = 'block'; errEl.textContent = m; }
+
+  fetch('../stories-by-year.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (data) { init(data); })
+    .catch(function (e) { fail('Could not load data: ' + e.message); });
+
+  // "Nice" upper bound + step for the y-axis so gridlines land on round numbers.
+  function niceTicks(max) {
+    if (max <= 0) return { top: 1, step: 1 };
+    var pow = Math.pow(10, Math.floor(Math.log10(max)));
+    var n = max / pow;
+    var step = (n <= 2 ? 0.5 : n <= 5 ? 1 : 2) * pow;
+    var top = Math.ceil(max / step) * step;
+    return { top: top, step: step };
+  }
+
+  function init(data) {
+    var bins = data.bins || [];
+    var maxCount = bins.reduce(function (m, b) { return Math.max(m, b.count); }, 0);
+    var years = bins.filter(function (b) { return b.era === 'year'; }).length;
+    var cents = bins.filter(function (b) { return b.era === 'century'; }).length;
+
+    introEl.textContent = data.total.toLocaleString() + ' stories with a known date'
+      + (data.unknown ? ' (' + data.unknown.toLocaleString() + ' without)' : '')
+      + ' — ' + years + ' yearly bins from 1900, ' + cents + ' earlier centuries.';
+    document.getElementById('legend').style.display = '';
+    document.getElementById('chart').style.display = '';
+    document.getElementById('xaxis').style.display = '';
+
+    var t = niceTicks(maxCount);
+
+    // y-axis ticks + matching gridlines, drawn top-down at each step.
+    var yax = document.getElementById('yaxis'), grid = document.getElementById('grid');
+    var yh = '', gh = '';
+    for (var v = 0; v <= t.top + 1e-9; v += t.step) {
+      var pct = 100 - (v / t.top) * 100;
+      yh += '<span class="tick" style="top:' + pct + '%">' + (v % 1 ? v.toFixed(1) : v) + '</span>';
+      gh += '<div class="gline" style="top:' + pct + '%"></div>';
+    }
+    yax.innerHTML = yh; grid.innerHTML = gh;
+
+    // bars + aligned x-axis label strip (label every decade year + every century bin).
+    var barsEl = document.getElementById('bars'), xstrip = document.getElementById('xstrip');
+    var bh = '', xh = '';
+    bins.forEach(function (b, i) {
+      var hpct = t.top ? (b.count / t.top) * 100 : 0;
+      var cls = b.era === 'century' ? ' century' : '';
+      bh += '<div class="bin' + cls + '" data-i="' + i + '">'
+        + '<div class="bar" style="height:' + hpct + '%"></div></div>';
+      var lab = '';
+      if (b.era === 'century') lab = b.short || b.label;
+      else if (b.label % 10 === 0) lab = b.label; // decade marks
+      xh += '<div class="xlab' + cls + '">' + (lab ? '<span>' + lab + '</span>' : '') + '</div>';
+    });
+    barsEl.innerHTML = bh; xstrip.innerHTML = xh;
+
+    // Keep the bar strip and the label strip scrolled together.
+    var plot = document.getElementById('plot'), xa = document.getElementById('xaxis');
+    plot.addEventListener('scroll', function () { xa.scrollLeft = plot.scrollLeft; });
+    xa.style.overflow = 'hidden';
+
+    // Tooltip on hover.
+    var tip = document.getElementById('tip');
+    barsEl.addEventListener('mousemove', function (e) {
+      var bin = e.target.closest ? e.target.closest('.bin') : null;
+      if (!bin) { tip.style.opacity = 0; return; }
+      var b = bins[+bin.getAttribute('data-i')];
+      var noun = b.count === 1 ? 'story' : 'stories';
+      tip.textContent = b.label + (b.era === 'century' ? '' : '') + ': ' + b.count.toLocaleString() + ' ' + noun;
+      tip.style.opacity = 1;
+      tip.style.left = Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + 'px';
+      tip.style.top = (e.clientY - 30) + 'px';
+    });
+    barsEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+  }
+})();
+</script>
+</body>
+</html>
