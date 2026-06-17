@@ -150,7 +150,7 @@ function storiesByYear(stories: RawStory[], storySlug: Map<string, string>): {
       const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
       const range = c >= 0 ? `${c}–${c + 99} CE` : `${-c}–${-(c + 99)} BCE`;
       bins.push({
-        label: c >= 0 ? ord : `${ord} BCE`,
+        label: c >= 0 ? ord : `-${ord}`,
         tip: c >= 0 ? `${ord} century CE (${range})` : `${ord} century BCE (${range})`,
         count: b.n, film: b.f, lo: c, hi: c + 99, era: 'century', items: b.items,
         ...(c < 0 ? { bc: true } : {}),
