@@ -218,24 +218,33 @@
     var total = barsEl.scrollWidth;
     var binEls = barsEl.querySelectorAll('.bin'); // in view order
 
-    // Header: one two-line label per binning region (year range + mode), ordered by screen
-    // position so it works whichever way the axis runs. Range is computed from the bins' spans.
+    // Header: one two-line label (year range + binning mode) per region, ordered by screen
+    // position. The by-year span is broken at the millennium (2000–present / 1950–1999) and
+    // the 1st-millennium bucket is its own region. Ranges + edges come from the bins.
     var regionDefs = [
-      { sel: '.bin.bc', mode: 'by century', test: function (b) { return b.era === 'century' && b.bc; } },
-      { sel: '.bin.century:not(.bc)', mode: 'by century', test: function (b) { return b.era === 'century' && !b.bc; } },
-      { sel: '.bin.decade', mode: 'by decade', test: function (b) { return b.era === 'decade'; } },
-      { sel: '.bin.year', mode: 'by year', test: function (b) { return b.era === 'year'; } },
+      { key: 'y2', mode: 'by year', test: function (b) { return b.era === 'year' && b.lo >= 2000; } },
+      { key: 'y1', mode: 'by year', test: function (b) { return b.era === 'year' && b.lo < 2000; } },
+      { key: 'dec', mode: 'by decade', test: function (b) { return b.era === 'decade'; } },
+      { key: 'cen', mode: 'by century', test: function (b) { return b.era === 'century' && !b.bc && !b.mill; } },
+      { key: 'mil', mode: 'by millennium', test: function (b) { return b.mill; } },
+      { key: 'bce', mode: 'by century', test: function (b) { return b.era === 'century' && b.bc; } },
     ];
     var present = [];
     regionDefs.forEach(function (rd) {
-      var mem = bins.filter(rd.test);
-      if (!mem.length) return;
-      var el = barsEl.querySelector(rd.sel);
-      var lo = Math.min.apply(null, mem.map(function (b) { return b.lo; }));
-      var hi = Math.max.apply(null, mem.map(function (b) { return b.hi; }));
-      var range = lo < 0 ? Math.abs(lo) + '–' + Math.abs(hi) + ' BCE'
-        : (hi <= 1899 ? lo + '–' + hi + ' CE' : lo + '–' + hi);
-      present.push({ mode: rd.mode, range: range, left: el ? el.offsetLeft : 0 });
+      var lo = Infinity, hi = -Infinity, left = Infinity, found = false;
+      view.forEach(function (b, i) {
+        if (!rd.test(b)) return;
+        found = true;
+        if (b.lo < lo) lo = b.lo;
+        if (b.hi > hi) hi = b.hi;
+        var x = binEls[i].offsetLeft; if (x < left) left = x;
+      });
+      if (!found) return;
+      var range = rd.key === 'y2' ? lo + '–present'
+        : rd.key === 'bce' ? Math.abs(lo) + '–' + Math.abs(hi) + ' BCE'
+          : rd.key === 'mil' ? lo + '–' + hi + ' CE'
+            : lo + '–' + hi;
+      present.push({ mode: rd.mode, range: range, left: left });
     });
     present.sort(function (a, b) { return a.left - b.left; });
     var zoneHtml = '';
@@ -272,7 +281,7 @@
     var mblock = function (b) {
       if (b.bc) return -1;
       if (b.mill) return 0;
-      if (b.era === 'year') return Math.floor((+b.label - 1) / 1000);
+      if (b.era === 'year') return Math.floor(+b.label / 1000); // 2000 starts a new block
       return 1; // CE centuries + decades sit in the 2nd millennium
     };
     var millHtml = '';
