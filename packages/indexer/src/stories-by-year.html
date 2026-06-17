@@ -54,8 +54,9 @@
   .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 2; pointer-events: none; }
   /* White vertical gridlines at the former decade/region shade boundaries. */
   .vline { position: absolute; top: 0; bottom: 0; border-left: 1px solid #fff; z-index: 1; pointer-events: none; }
-  /* Thick white zig-zag scale-break at granularity changes (above panel, below dotted line). */
-  .zigzag { position: absolute; top: 0; bottom: 0; width: 14px; transform: translateX(-50%); z-index: 1; pointer-events: none; }
+  /* Thick white zig-zag scale-break at granularity changes (above panel, below dotted line).
+     Width/height come from the SVG attributes; positioned at the boundary and centred. */
+  .zigzag { position: absolute; top: 0; transform: translateX(-50%); z-index: 1; pointer-events: none; }
   /* Single uniform light-grey panel behind the bars (scrolls with them). */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; background: var(--band-b); }
   /* Bins coarsen going back in time, so wider categories get wider columns. Bars are
@@ -273,12 +274,18 @@
     for (var zi = 1; zi < present.length; zi++) {
       if (present[zi].gran !== present[zi - 1].gran) zzX.push(present[zi].left);
     }
+    // One continuous polyline sized to the actual plot height (avoids the percentage-height
+    // and tile-seam problems of a pattern): uniform width, full height. ~190px (≈5cm) period,
+    // ±10px amplitude (a triangle wave: centre→right→centre→left per period).
+    var zzA = 10, zzM = 3, zzW = 2 * zzA + 2 * zzM, zzCx = zzA + zzM, zzT = 190;
+    var zzH = barsEl.clientHeight, zzQ = zzT / 4, zzXmap = [zzCx, zzCx + zzA, zzCx, zzCx - zzA];
+    var zzPts = [];
+    for (var zk = 0; zk * zzQ <= zzH + zzT; zk++) zzPts.push(zzXmap[zk % 4] + ',' + (zk * zzQ));
+    var zzPoly = zzPts.join(' ');
     var zzHtml = '';
-    zzX.forEach(function (x, k) {
-      zzHtml += '<svg class="zigzag" style="left:' + x + 'px"><defs>'
-        + '<pattern id="zz' + k + '" width="14" height="16" patternUnits="userSpaceOnUse">'
-        + '<polyline points="7,0 2,4 12,12 7,16" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>'
-        + '</pattern></defs><rect width="14" height="100%" fill="url(#zz' + k + ')"/></svg>';
+    zzX.forEach(function (x) {
+      zzHtml += '<svg class="zigzag" width="' + zzW + '" height="' + zzH + '" style="left:' + x + 'px">'
+        + '<polyline points="' + zzPoly + '" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/></svg>';
     });
 
     // Plot: a single uniform light-grey panel. The former decade/region shade transitions
