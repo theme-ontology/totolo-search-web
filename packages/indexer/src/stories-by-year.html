@@ -7,7 +7,7 @@
 <title>Stories by year · Theme Ontology</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root { --bar-other:#5b9bd5; --bar-film:#e0883e; --yw:3.4rem;
+  :root { --bar-film:#474e8a; --bar-other:#7eb1dd; --yw:3.4rem;
           /* Grey panel banding (white gridlines show against it); header a step darker. */
           --band-a:#e6eaee; --band-b:#eef1f4; --hdr:#dce1e6; }
   * { box-sizing: border-box; }
@@ -61,9 +61,12 @@
   .bin.decade { flex-basis: 22px; }
   .bin.century { flex-basis: 26px; }
   .bin .bar { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 0; }
+  .bin { cursor: pointer; }
   .bin .seg.other { background: var(--bar-other); }
   .bin .seg.film { background: var(--bar-film); }
-  .bin:hover .bar { filter: brightness(.9); }
+  /* Thin white separator between stacked segments (only when both are present). */
+  .bin .seg.other + .seg.film { border-top: 1px solid #fff; }
+  .bin:hover .bar { filter: brightness(.92); }
 
   /* X-axis tick labels, horizontal (never angled), mirroring the bar widths so each label
      centres under its bar; overlapping labels are dropped client-side. */
@@ -74,7 +77,21 @@
   .xlab.century { flex-basis: 26px; }
   .xlab span { position: absolute; left: 50%; top: 0; transform: translateX(-50%); }
 
-  #tip { position: fixed; z-index: 10; background: #212529; color: #fff; font-size: .75rem; padding: .25rem .5rem; border-radius: 4px; pointer-events: none; white-space: nowrap; opacity: 0; transition: opacity .08s; }
+  /* Click/tap popup: a header + a scrollable, linked list of the bin's stories. */
+  #pop { position: fixed; z-index: 20; display: none; flex-direction: column; width: 264px; max-width: 92vw; max-height: 62vh; background: #fff; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); overflow: hidden; }
+  #pop .pop-head { flex: none; padding: .5rem .7rem; border-bottom: 1px solid #eef0f2; font-size: .8rem; font-weight: 600; color: #212529; display: flex; align-items: baseline; gap: .4rem; }
+  #pop .pop-head .sub { font-weight: 400; color: #868e96; font-size: .72rem; }
+  #pop .pop-head button { margin-left: auto; align-self: flex-start; border: 0; background: none; font-size: 1.15rem; line-height: 1; color: #adb5bd; cursor: pointer; padding: 0 .1rem; }
+  #pop .pop-head button:hover { color: #495057; }
+  #pop ul { list-style: none; margin: 0; padding: .25rem 0; overflow-y: auto; }
+  #pop li { display: flex; align-items: center; gap: .45rem; padding: .16rem .7rem; font-size: .8rem; }
+  #pop li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  #pop li .dot.film { background: var(--bar-film); }
+  #pop li .dot.other { background: var(--bar-other); }
+  #pop li a, #pop li span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pop li a { color: #1f6feb; text-decoration: none; }
+  #pop li a:hover { text-decoration: underline; }
+  #pop li .yr { margin-left: auto; padding-left: .5rem; color: #adb5bd; font-variant-numeric: tabular-nums; flex: none; }
   #err { padding: 2rem; color: #c92a2a; }
 </style>
 </head>
@@ -101,7 +118,10 @@
   </div>
   <div class="xaxis" id="xaxis" style="display:none"><div class="xstrip" id="xstrip"></div></div>
 </main>
-<div id="tip"></div>
+<div id="pop">
+  <div class="pop-head"><span id="pop-title"></span><button id="pop-close" aria-label="Close">&times;</button></div>
+  <ul id="pop-list"></ul>
+</div>
 <script>
 (function () {
   var introEl = document.getElementById('intro'), errEl = document.getElementById('err');
@@ -167,9 +187,11 @@
       var other = b.count - (b.film || 0);
       var cls = b.era === 'century' ? (b.bc ? ' century bc' : ' century') : (b.era === 'decade' ? ' decade' : ' year');
       // Stacked: films at the base, everything else above. flex-grow splits by count.
-      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">'
-        + '<div class="seg other" style="flex:' + other + '"></div>'
-        + '<div class="seg film" style="flex:' + (b.film || 0) + '"></div></div></div>';
+      // Zero-count segments are omitted so single-format bars carry no separator.
+      var segs = '';
+      if (other > 0) segs += '<div class="seg other" style="flex:' + other + '"></div>';
+      if (b.film) segs += '<div class="seg film" style="flex:' + b.film + '"></div>';
+      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
       var lab = '';
       if (b.era === 'century' || b.era === 'decade') lab = b.label;
       else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
@@ -241,24 +263,57 @@
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;
 
-    // ── Scroll sync: plot drives the top annotation strip and the bottom label strip. ──
-    var plot = document.getElementById('plot'), xa = document.getElementById('xaxis'), zb = document.getElementById('zonebar');
-    plot.addEventListener('scroll', function () { xa.scrollLeft = plot.scrollLeft; zb.scrollLeft = plot.scrollLeft; });
+    // ── Popup + scroll dismissal ──
+    var pop = document.getElementById('pop'), popTitle = document.getElementById('pop-title'), popList = document.getElementById('pop-list');
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function hidePop() { pop.style.display = 'none'; }
+    function ymd(y) { return y < 0 ? (-y) + ' BCE' : '' + y; }
 
-    // ── Tooltip ──
-    var tip = document.getElementById('tip');
-    barsEl.addEventListener('mousemove', function (e) {
-      var bin = e.target.closest ? e.target.closest('.bin') : null;
-      if (!bin) { tip.style.opacity = 0; return; }
+    // Click/tap a bar → list its stories (linked to their pages); content adapts to bar type.
+    function openPop(bin) {
       var b = view[+bin.getAttribute('data-i')];
-      var noun = b.count === 1 ? 'story' : 'stories';
-      var films = b.film ? ' · ' + b.film.toLocaleString() + ' film' + (b.film === 1 ? '' : 's') : '';
-      tip.textContent = (b.tip || b.label) + ': ' + b.count.toLocaleString() + ' ' + noun + films;
-      tip.style.opacity = 1;
-      tip.style.left = Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + 'px';
-      tip.style.top = (e.clientY - 30) + 'px';
+      if (!b || !b.count) return;
+      var films = b.film ? b.film.toLocaleString() + ' film' + (b.film === 1 ? '' : 's') : '';
+      var sub = b.count.toLocaleString() + ' stor' + (b.count === 1 ? 'y' : 'ies') + (films ? ' · ' + films : '');
+      popTitle.innerHTML = esc(b.tip || b.label) + ' <span class="sub">' + sub + '</span>';
+      var showYr = b.era !== 'year'; // a single year is redundant per row
+      var html = '';
+      (b.items || []).forEach(function (it) {
+        var name = esc(it.t);
+        var label = it.s ? '<a href="../../story/' + it.s + '.html">' + name + '</a>' : '<span class="t">' + name + '</span>';
+        html += '<li><span class="dot ' + (it.f ? 'film' : 'other') + '"></span>' + label
+          + (showYr ? '<span class="yr">' + ymd(it.y) + '</span>' : '') + '</li>';
+      });
+      popList.innerHTML = html;
+      popList.scrollTop = 0;
+      pop.style.display = 'flex';
+      var r = bin.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+      var left = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+      var top = r.top - ph - 8;
+      if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - ph - 8);
+      pop.style.left = left + 'px';
+      pop.style.top = Math.max(8, top) + 'px';
+    }
+
+    barsEl.addEventListener('click', function (e) {
+      var bin = e.target.closest ? e.target.closest('.bin') : null;
+      if (!bin) return;
+      e.stopPropagation();
+      openPop(bin);
     });
-    barsEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    pop.addEventListener('click', function (e) { e.stopPropagation(); }); // links still navigate
+    document.getElementById('pop-close').addEventListener('click', hidePop);
+    document.addEventListener('click', hidePop);          // background tap
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hidePop(); });
+    window.addEventListener('resize', hidePop);
+    window.addEventListener('scroll', hidePop, { passive: true });
+    window.addEventListener('touchmove', function (e) {   // chart/page scroll, not popup-internal
+      if (!(e.target.closest && e.target.closest('#pop'))) hidePop();
+    }, { passive: true });
+
+    // ── Scroll sync (drives the strips) + dismiss the popup on chart scroll. ──
+    var plot = document.getElementById('plot'), xa = document.getElementById('xaxis'), zb = document.getElementById('zonebar');
+    plot.addEventListener('scroll', function () { xa.scrollLeft = plot.scrollLeft; zb.scrollLeft = plot.scrollLeft; hidePop(); });
   }
 })();
 </script>

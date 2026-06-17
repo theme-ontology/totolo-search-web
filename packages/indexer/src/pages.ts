@@ -90,64 +90,82 @@ function ordinal(n: number): string {
 // centuries that actually contain stories). Empty years/decades inside their ranges are
 // kept so the modern axis stays continuous. Centuries are labelled as ordinals ("18th",
 // "6th BC"); BC bins are flagged so the page can colour them distinctly.
-function storiesByYear(stories: RawStory[]): {
-  total: number;
-  unknown: number;
-  bins: Array<{ label: string; tip: string; count: number; film: number; era: 'year' | 'decade' | 'century'; bc?: boolean }>;
+interface SbyItem { t: string; s: string; f: 0 | 1; y: number }
+interface SbyBin {
+  label: string; tip: string; count: number; film: number;
+  era: 'year' | 'decade' | 'century'; bc?: boolean; mill?: boolean; items: SbyItem[];
+}
+
+function storiesByYear(stories: RawStory[], storySlug: Map<string, string>): {
+  total: number; unknown: number; bins: SbyBin[];
 } {
-  // Each bucket tracks total count and how many are films (story id begins "movie:").
-  type Tally = { n: number; f: number };
-  const bump = (m: Map<number, Tally>, k: number, film: boolean) => {
-    let t = m.get(k); if (!t) { t = { n: 0, f: 0 }; m.set(k, t); }
-    t.n++; if (film) t.f++;
+  // Each bucket holds its stories (title, slug, film flag, year); count/film derive from them.
+  // A story is a film when its id begins "movie:". The 1st millennium CE (years 1–1000) is a
+  // single bucket; centuries otherwise.
+  type Bucket = { n: number; f: number; items: SbyItem[] };
+  const mk = (): Bucket => ({ n: 0, f: 0, items: [] });
+  const add = (m: Map<number, Bucket>, k: number, it: SbyItem) => {
+    let b = m.get(k); if (!b) { b = mk(); m.set(k, b); }
+    b.n++; if (it.f) b.f++; b.items.push(it);
   };
-  const year = new Map<number, Tally>();
-  const decade = new Map<number, Tally>();
-  const century = new Map<number, Tally>();
-  let total = 0, unknown = 0, maxYear = -Infinity;
+  const year = new Map<number, Bucket>();
+  const decade = new Map<number, Bucket>();
+  const century = new Map<number, Bucket>();
+  const mill = mk(); // 1st millennium CE (years 1..1000)
+  let total = 0, unknown = 0, maxYear = -Infinity, minOld = Infinity;
   for (const s of stories) {
     const y = storyYear(s.date);
     if (y === null) { unknown++; continue; }
     total++;
-    const film = s.name.startsWith('movie:');
-    if (y >= 1950) {
-      bump(year, y, film);
-      if (y > maxYear) maxYear = y;
-    } else if (y >= 1900) {
-      bump(decade, Math.floor(y / 10) * 10, film);
-    } else {
-      bump(century, Math.floor(y / 100) * 100, film);
+    const f: 0 | 1 = s.name.startsWith('movie:') ? 1 : 0;
+    const it: SbyItem = { t: s.title || s.name, s: storySlug.get(s.name) ?? '', f, y };
+    if (y >= 1950) { add(year, y, it); if (y > maxYear) maxYear = y; }
+    else if (y >= 1900) { add(decade, Math.floor(y / 10) * 10, it); }
+    else {
+      if (y < minOld) minOld = y;
+      if (y >= 1001) add(century, Math.floor(y / 100) * 100, it);
+      else if (y >= 1) { mill.n++; if (f) mill.f++; mill.items.push(it); }
+      else add(century, Math.floor(y / 100) * 100, it);
     }
   }
-  const at = (m: Map<number, Tally>, k: number): Tally => m.get(k) ?? { n: 0, f: 0 };
-  const bins: Array<{ label: string; tip: string; count: number; film: number; era: 'year' | 'decade' | 'century'; bc?: boolean }> = [];
-  // Centuries from the earliest populated one through the 1800s, oldest first, INCLUDING
-  // empty centuries so the axis is contiguous (no gaps). A century starting at c spans
-  // [c, c+99]; c=0 is the 1st century CE, c=-100 the 1st century BCE.
-  const centStarts = [...century.keys()];
-  if (centStarts.length) {
-    for (let c = Math.min(...centStarts); c <= 1800; c += 100) {
+  const byYearThenTitle = (a: SbyItem, b: SbyItem) => a.y - b.y || a.t.localeCompare(b.t);
+  const take = (b: Bucket): Bucket => { b.items.sort(byYearThenTitle); return b; };
+  const bins: SbyBin[] = [];
+  // Pre-1900 spine: BCE centuries, then the 1st-millennium bucket, then CE centuries 11th–19th.
+  // Empty centuries are kept so the axis stays contiguous; the 1st millennium (1st–10th c. CE)
+  // is collapsed into one bucket. A century starting at c spans [c, c+99].
+  if (minOld < 1900 && Number.isFinite(minOld)) {
+    let emittedMill = false;
+    for (let c = Math.floor(minOld / 100) * 100; c <= 1800; c += 100) {
+      if (c >= 0 && c <= 900) {                 // 1st–10th c. CE → one millennium bucket
+        if (!emittedMill) {
+          take(mill);
+          bins.push({ label: '1st mill.', tip: '1st millennium CE (1–1000)', count: mill.n, film: mill.f, era: 'century', mill: true, items: mill.items });
+          emittedMill = true;
+        }
+        continue;
+      }
+      const b = take(century.get(c) ?? mk());
       const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
       const range = c >= 0 ? `${c}–${c + 99} CE` : `${-c}–${-(c + 99)} BCE`;
-      const t = at(century, c);
       bins.push({
         label: c >= 0 ? ord : `${ord} BCE`,
         tip: c >= 0 ? `${ord} century CE (${range})` : `${ord} century BCE (${range})`,
-        count: t.n, film: t.f, era: 'century',
+        count: b.n, film: b.f, era: 'century', items: b.items,
         ...(c < 0 ? { bc: true } : {}),
       });
     }
   }
   // Decades 1900–1949 (all five, zeros kept). Axis label is the short "00s".."40s".
   for (let d = 1900; d <= 1940; d += 10) {
-    const t = at(decade, d);
-    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: t.n, film: t.f, era: 'decade' });
+    const b = take(decade.get(d) ?? mk());
+    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: b.n, film: b.f, era: 'decade', items: b.items });
   }
   // Years 1950..maxYear (zeros kept) for a continuous recent axis.
   if (maxYear >= 1950) {
     for (let y = 1950; y <= maxYear; y++) {
-      const t = at(year, y);
-      bins.push({ label: String(y), tip: String(y), count: t.n, film: t.f, era: 'year' });
+      const b = take(year.get(y) ?? mk());
+      bins.push({ label: String(y), tip: String(y), count: b.n, film: b.f, era: 'year', items: b.items });
     }
   }
   return { total, unknown, bins };
@@ -874,7 +892,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
   // later it can be split by story format / franchise.
   await mkdir(join(outDir, 'stats', 'stories-by-year'), { recursive: true });
   await writeFile(join(outDir, 'stats', 'stories-by-year.json'),
-    JSON.stringify({ lto: raw.lto, ...storiesByYear(raw.stories ?? []) }), 'utf-8');
+    JSON.stringify({ lto: raw.lto, ...storiesByYear(raw.stories ?? [], storySlug) }), 'utf-8');
   try {
     const sbySrc = resolve(dirname(fileURLToPath(import.meta.url)), 'stories-by-year.html');
     await writeFile(join(outDir, 'stats', 'stories-by-year', 'index.html'), await readFile(sbySrc, 'utf-8'), 'utf-8');
