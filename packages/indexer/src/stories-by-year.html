@@ -43,12 +43,12 @@
   .yaxis .tick b { margin-right: 5px; font-size: .68rem; font-weight: 400; color: #868e96; font-variant-numeric: tabular-nums; }
   .yaxis .tick.max b { font-weight: 700; color: #495057; }
   .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; }
-  /* width:max-content makes .bars as wide as its bars (not just the viewport), so the
-     gridlines (left:0/right:0) span the full scroll width rather than stopping at the edge. */
-  .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; width: max-content; min-width: 100%; }
-  /* White horizontal gridlines, inside .bars so they span the full scroll width. Above the
-     shading, below the bars. */
-  .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; z-index: 1; pointer-events: none; }
+  .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
+  /* White horizontal gridlines in a layer given an explicit pixel width (= the full scroll
+     width, exactly like the shade bands), so they span the whole chart when scrolled. Above
+     the shading, below the bars. */
+  .grid { position: absolute; top: 0; bottom: 0; left: 0; z-index: 1; pointer-events: none; }
+  .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; }
   .gline.top { border-top-color: #cdd3d9; }
   /* Gray dotted dividers at every millennium boundary. Scroll with the bars. */
   .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
@@ -65,7 +65,7 @@
   .bin.century { flex-basis: 26px; }
   .bin.mill { flex-basis: 66px; }
   .bin .bar { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 0; }
-  .bin { cursor: pointer; }
+  .bin .seg { cursor: pointer; }
   .bin .seg.other { background: var(--bar-other); }
   .bin .seg.film { background: var(--bar-film); }
   /* Thin white separator between stacked segments (only when both are present). */
@@ -289,7 +289,7 @@
         millHtml += '<div class="mill-line" style="left:' + (binEls[mi].offsetLeft - 1) + 'px"></div>';
       }
     }
-    barsEl.insertAdjacentHTML('afterbegin', gh + shadeHtml + tickHtml + millHtml);
+    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + tickHtml + millHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;
@@ -338,13 +338,12 @@
     }
 
     barsEl.addEventListener('click', function (e) {
-      var bin = e.target.closest ? e.target.closest('.bin') : null;
-      if (!bin) return;
+      // Only a click on an actual bar segment opens a popup; clicks on the empty column
+      // (just background to the eye) fall through to the document handler, which closes it.
+      var seg = e.target.closest ? e.target.closest('.seg') : null;
+      if (!seg) return;
       e.stopPropagation();
-      // Clicking a stack segment lists just that subset; clicking elsewhere lists the whole bar.
-      var seg = e.target.closest('.seg');
-      var filter = seg ? (seg.classList.contains('film') ? 'film' : 'other') : null;
-      openPop(bin, filter);
+      openPop(seg.closest('.bin'), seg.classList.contains('film') ? 'film' : 'other');
     });
     pop.addEventListener('click', function (e) { e.stopPropagation(); }); // links still navigate
     document.getElementById('pop-close').addEventListener('click', hidePop);
