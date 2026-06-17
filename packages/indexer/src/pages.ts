@@ -93,54 +93,61 @@ function ordinal(n: number): string {
 function storiesByYear(stories: RawStory[]): {
   total: number;
   unknown: number;
-  bins: Array<{ label: string; tip: string; count: number; era: 'year' | 'decade' | 'century'; bc?: boolean }>;
+  bins: Array<{ label: string; tip: string; count: number; film: number; era: 'year' | 'decade' | 'century'; bc?: boolean }>;
 } {
-  const yearCount = new Map<number, number>();
-  const decadeCount = new Map<number, number>();
-  const centuryCount = new Map<number, number>();
+  // Each bucket tracks total count and how many are films (story id begins "movie:").
+  type Tally = { n: number; f: number };
+  const bump = (m: Map<number, Tally>, k: number, film: boolean) => {
+    let t = m.get(k); if (!t) { t = { n: 0, f: 0 }; m.set(k, t); }
+    t.n++; if (film) t.f++;
+  };
+  const year = new Map<number, Tally>();
+  const decade = new Map<number, Tally>();
+  const century = new Map<number, Tally>();
   let total = 0, unknown = 0, maxYear = -Infinity;
   for (const s of stories) {
     const y = storyYear(s.date);
     if (y === null) { unknown++; continue; }
     total++;
+    const film = s.name.startsWith('movie:');
     if (y >= 1950) {
-      yearCount.set(y, (yearCount.get(y) ?? 0) + 1);
+      bump(year, y, film);
       if (y > maxYear) maxYear = y;
     } else if (y >= 1900) {
-      const d = Math.floor(y / 10) * 10;
-      decadeCount.set(d, (decadeCount.get(d) ?? 0) + 1);
+      bump(decade, Math.floor(y / 10) * 10, film);
     } else {
-      const c = Math.floor(y / 100) * 100;
-      centuryCount.set(c, (centuryCount.get(c) ?? 0) + 1);
+      bump(century, Math.floor(y / 100) * 100, film);
     }
   }
-  const bins: Array<{ label: string; tip: string; count: number; era: 'year' | 'decade' | 'century'; bc?: boolean }> = [];
+  const at = (m: Map<number, Tally>, k: number): Tally => m.get(k) ?? { n: 0, f: 0 };
+  const bins: Array<{ label: string; tip: string; count: number; film: number; era: 'year' | 'decade' | 'century'; bc?: boolean }> = [];
   // Centuries from the earliest populated one through the 1800s, oldest first, INCLUDING
   // empty centuries so the axis is contiguous (no gaps). A century starting at c spans
-  // [c, c+99]; c=0 is the 1st century AD, c=-100 the 1st century BC.
-  const centStarts = [...centuryCount.keys()];
+  // [c, c+99]; c=0 is the 1st century CE, c=-100 the 1st century BCE.
+  const centStarts = [...century.keys()];
   if (centStarts.length) {
     for (let c = Math.min(...centStarts); c <= 1800; c += 100) {
       const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
       const range = c >= 0 ? `${c}–${c + 99} CE` : `${-c}–${-(c + 99)} BCE`;
+      const t = at(century, c);
       bins.push({
         label: c >= 0 ? ord : `${ord} BCE`,
         tip: c >= 0 ? `${ord} century CE (${range})` : `${ord} century BCE (${range})`,
-        count: centuryCount.get(c) ?? 0,
-        era: 'century',
+        count: t.n, film: t.f, era: 'century',
         ...(c < 0 ? { bc: true } : {}),
       });
     }
   }
-  // Decades 1900–1949 (all five, zeros kept). Axis label is the short "00s".."40s";
-  // the tooltip carries the full decade + range.
+  // Decades 1900–1949 (all five, zeros kept). Axis label is the short "00s".."40s".
   for (let d = 1900; d <= 1940; d += 10) {
-    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: decadeCount.get(d) ?? 0, era: 'decade' });
+    const t = at(decade, d);
+    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: t.n, film: t.f, era: 'decade' });
   }
   // Years 1950..maxYear (zeros kept) for a continuous recent axis.
   if (maxYear >= 1950) {
     for (let y = 1950; y <= maxYear; y++) {
-      bins.push({ label: String(y), tip: String(y), count: yearCount.get(y) ?? 0, era: 'year' });
+      const t = at(year, y);
+      bins.push({ label: String(y), tip: String(y), count: t.n, film: t.f, era: 'year' });
     }
   }
   return { total, unknown, bins };

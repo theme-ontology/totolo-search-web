@@ -7,9 +7,9 @@
 <title>Stories by year · Theme Ontology</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root { --bar:#5b9bd5; --bar-hi:#1f5c99; --yw:3.4rem;
-          /* Subtle alternating grey banding for the regions; header strip a step darker. */
-          --band-a:#f1f3f5; --band-b:#f9fafb; --hdr-a:#e4e8eb; --hdr-b:#eceff2; }
+  :root { --bar-other:#5b9bd5; --bar-film:#e0883e; --yw:3.4rem;
+          /* Grey panel banding (white gridlines show against it); header a step darker. */
+          --band-a:#e6eaee; --band-b:#eef1f4; --hdr:#dce1e6; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
   header.bar { flex: none; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
@@ -17,15 +17,19 @@
   header.bar a.home { color: #495057; text-decoration: none; font-size: .85rem; }
   header.bar a.home:hover { text-decoration: underline; }
   main { flex: 1; min-height: 0; overflow: hidden; width: 100%; max-width: 1180px; margin: 0 auto; padding: 1.2rem 1rem 1rem; display: flex; flex-direction: column; }
-  .intro { font-size: .85rem; color: #495057; margin: 0 0 .9rem; }
+  .intro { font-size: .85rem; color: #495057; margin: 0 0 .35rem; }
+  .legend { display: flex; gap: 1.1rem; font-size: .78rem; color: #495057; margin: 0 0 .8rem; }
+  .legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  .legend i.sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+  .legend i.film { background: var(--bar-film); }
+  .legend i.other { background: var(--bar-other); }
 
   /* Region annotation strip above the plot, offset by the y-axis gutter and scrolled
      in sync with the bars. Each label spans (and tints) its region's horizontal extent. */
   .zonebar { flex: none; height: 1.4rem; margin-left: calc(var(--yw) + 1px); overflow: hidden; }
   .zstrip { position: relative; height: 100%; }
-  .zlabel { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #495057; white-space: nowrap; overflow: hidden; }
-  .zlabel.z-a { background: var(--hdr-a); }
-  .zlabel.z-b { background: var(--hdr-b); }
+  .zlabel { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #495057; white-space: nowrap; overflow: hidden; background: var(--hdr); }
+  .zlabel + .zlabel { border-left: 1px solid #cdd3d9; }
 
   /* Chart: y-axis gutter + a horizontally scrollable plot of equal-gap bars. */
   .chart { flex: 1; min-height: 0; display: flex; }
@@ -40,21 +44,26 @@
   /* Very subtle horizontal grid (fixed; doesn't scroll). Sits above the region shading
      but below the bars. */
   .grid { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-  .grid .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #f1f3f5; }
-  .grid .gline.top { border-top-color: #e3e6e9; }
+  .grid .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; }
+  .grid .gline.top { border-top-color: #cdd3d9; }
   .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
   /* Subtle dotted divider at year 0 (the BC/AD boundary). Scrolls with the bars. */
   .zero-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
-  /* Region shading, scrolls with the bars (placed inside .bars), behind them. */
+  /* Region/decade shading, scrolls with the bars (placed inside .bars), behind them. */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; }
   .zone-shade.z-a { background: var(--band-a); }
   .zone-shade.z-b { background: var(--band-b); }
-  /* Bins coarsen going back in time, so wider categories get wider columns. One bar colour. */
+  /* Short ticks at decade boundaries within the by-year region (x-axis baseline). */
+  .decade-tick { position: absolute; bottom: 0; height: 7px; border-left: 1px solid #aeb6bf; z-index: 1; }
+  /* Bins coarsen going back in time, so wider categories get wider columns. Bars are
+     stacked: films (movie:) at the base + everything else on top, in two colours. */
   .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 2; }
   .bin.decade { flex-basis: 22px; }
   .bin.century { flex-basis: 26px; }
-  .bin .bar { width: 100%; background: var(--bar); border-radius: 2px 2px 0 0; min-height: 0; transition: background .1s; }
-  .bin:hover .bar { background: var(--bar-hi); }
+  .bin .bar { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 0; }
+  .bin .seg.other { background: var(--bar-other); }
+  .bin .seg.film { background: var(--bar-film); }
+  .bin:hover .bar { filter: brightness(.9); }
 
   /* X-axis tick labels, horizontal (never angled), mirroring the bar widths so each label
      centres under its bar; overlapping labels are dropped client-side. */
@@ -77,6 +86,10 @@
 </header>
 <main>
   <p class="intro" id="intro">Loading…</p>
+  <div class="legend" id="legend" style="display:none">
+    <span><i class="sw film"></i>films</span>
+    <span><i class="sw other"></i>other</span>
+  </div>
   <div id="err" style="display:none"></div>
   <div class="zonebar" id="zonebar" style="display:none"><div class="zstrip" id="zstrip"></div></div>
   <div class="chart" id="chart" style="display:none">
@@ -111,9 +124,10 @@
     // Exact top: the tallest bar reaches 100%.
     var max = bins.reduce(function (m, b) { return Math.max(m, b.count); }, 0) || 1;
 
-    introEl.textContent = data.total.toLocaleString() + ' stories with a known date'
-      + (data.unknown ? ' (' + data.unknown.toLocaleString() + ' without)' : '')
-      + ' — per year from 1950, per decade for 1900–1949, per century before.';
+    introEl.textContent = data.total.toLocaleString()
+      + ' stories by earliest known publication date — per year from 1950,'
+      + ' per decade for 1900–1949, per century before.';
+    document.getElementById('legend').style.display = '';
     document.getElementById('zonebar').style.display = '';
     document.getElementById('chart').style.display = '';
     document.getElementById('xaxis').style.display = '';
@@ -150,8 +164,12 @@
     var bh = '', xh = '';
     view.forEach(function (b, i) {
       var hpct = (b.count / max) * 100;
+      var other = b.count - (b.film || 0);
       var cls = b.era === 'century' ? (b.bc ? ' century bc' : ' century') : (b.era === 'decade' ? ' decade' : ' year');
-      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%"></div></div>';
+      // Stacked: films at the base, everything else above. flex-grow splits by count.
+      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">'
+        + '<div class="seg other" style="flex:' + other + '"></div>'
+        + '<div class="seg film" style="flex:' + (b.film || 0) + '"></div></div></div>';
       var lab = '';
       if (b.era === 'century' || b.era === 'decade') lab = b.label;
       else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
@@ -168,9 +186,12 @@
       else lastRight = rc.right;
     }
 
-    // ── Region shading (behind bars) + top annotations, measured from the laid-out bars. ──
-    // Detect each region's first bin, order them by screen position (works whichever way
-    // the axis runs), then shade contiguous bands with alternating greys + a header label.
+    // ── Region annotations (header) + plot shading, measured from the laid-out bars. ──
+    var total = barsEl.scrollWidth;
+    var binEls = barsEl.querySelectorAll('.bin'); // in view order
+
+    // Header: one label spanning each binning region (ordered by screen position so it
+    // works whichever way the axis runs).
     var regions = [
       { sel: '.bin.bc', label: 'by century BCE' },
       { sel: '.bin.century:not(.bc)', label: 'by century CE' },
@@ -183,23 +204,39 @@
       if (el) present.push({ label: r.label, left: el.offsetLeft });
     });
     present.sort(function (a, b) { return a.left - b.left; });
-    var total = barsEl.scrollWidth;
-    var shadeHtml = '', zoneHtml = '';
+    var zoneHtml = '';
     present.forEach(function (p, i) {
       var L = i === 0 ? 0 : p.left;
       var R = i === present.length - 1 ? total : present[i + 1].left;
-      var band = (i % 2 === 0) ? 'z-a' : 'z-b';
-      var st = 'left:' + L + 'px;width:' + (R - L) + 'px';
-      shadeHtml += '<div class="zone-shade ' + band + '" style="' + st + '"></div>';
-      zoneHtml += '<div class="zlabel ' + band + '" style="' + st + '">' + p.label + '</div>';
+      zoneHtml += '<div class="zlabel" style="left:' + L + 'px;width:' + (R - L) + 'px">' + p.label + '</div>';
     });
-    // Year-0 divider: the shared boundary between the BCE and CE century bands, i.e. the
-    // leftmost edge of whichever of the two sits on the right.
+
+    // Plot shading: alternating grey cells — one per decade inside the by-year region,
+    // one per whole region elsewhere — and short ticks at the by-year decade boundaries.
+    var cellKey = function (b) {
+      return b.era === 'year' ? 'y' + Math.floor(+b.label / 10)
+        : b.era === 'decade' ? 'd' : (b.bc ? 'cb' : 'cc');
+    };
+    var cells = [];
+    view.forEach(function (b, i) {
+      var k = cellKey(b), last = cells[cells.length - 1];
+      if (last && last.key === k) last.end = i;
+      else cells.push({ key: k, start: i, end: i, year: b.era === 'year' });
+    });
+    var shadeHtml = '', tickHtml = '';
+    cells.forEach(function (c, i) {
+      var L = i === 0 ? 0 : binEls[c.start].offsetLeft;
+      var R = i === cells.length - 1 ? total : binEls[cells[i + 1].start].offsetLeft;
+      shadeHtml += '<div class="zone-shade ' + (i % 2 ? 'z-b' : 'z-a') + '" style="left:' + L + 'px;width:' + (R - L) + 'px"></div>';
+      if (c.year && i > 0 && cells[i - 1].year) {
+        tickHtml += '<div class="decade-tick" style="left:' + (binEls[c.start].offsetLeft - 1) + 'px"></div>';
+      }
+    });
+    // Year-0 divider: the shared boundary between the BCE and CE century bands.
     var bcEl = barsEl.querySelector('.bin.bc'), ceEl = barsEl.querySelector('.bin.century:not(.bc)');
-    if (bcEl && ceEl) {
-      shadeHtml += '<div class="zero-line" style="left:' + Math.max(bcEl.offsetLeft, ceEl.offsetLeft) + 'px"></div>';
-    }
-    barsEl.insertAdjacentHTML('afterbegin', shadeHtml);
+    var zeroHtml = (bcEl && ceEl)
+      ? '<div class="zero-line" style="left:' + Math.max(bcEl.offsetLeft, ceEl.offsetLeft) + 'px"></div>' : '';
+    barsEl.insertAdjacentHTML('afterbegin', shadeHtml + tickHtml + zeroHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;
@@ -215,7 +252,8 @@
       if (!bin) { tip.style.opacity = 0; return; }
       var b = view[+bin.getAttribute('data-i')];
       var noun = b.count === 1 ? 'story' : 'stories';
-      tip.textContent = (b.tip || b.label) + ': ' + b.count.toLocaleString() + ' ' + noun;
+      var films = b.film ? ' · ' + b.film.toLocaleString() + ' film' + (b.film === 1 ? '' : 's') : '';
+      tip.textContent = (b.tip || b.label) + ': ' + b.count.toLocaleString() + ' ' + noun + films;
       tip.style.opacity = 1;
       tip.style.left = Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + 'px';
       tip.style.top = (e.clientY - 30) + 'px';
