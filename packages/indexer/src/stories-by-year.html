@@ -73,15 +73,12 @@
   /* X-axis tick labels, horizontal (never angled), mirroring the bar widths so each label
      centres under its bar; overlapping labels are dropped client-side. */
   .xaxis { flex: none; height: 1.55rem; margin-left: calc(var(--yw) + 1px); overflow: hidden; }
-  .xstrip { display: flex; gap: 1px; padding: .42rem .3rem 0; min-width: 100%; }
-  .xlab { flex: 0 0 9px; font-size: .65rem; color: #868e96; white-space: nowrap; overflow: visible; position: relative; }
-  .xlab.decade { flex-basis: 22px; }
-  .xlab.century { flex-basis: 26px; }
-  .xlab.mill { flex-basis: 66px; }
-  .xlab span { position: absolute; left: 50%; top: 0; transform: translateX(-50%); }
+  /* width set to the scroll width in JS; labels are absolutely placed at each bar's centre. */
+  .xstrip { position: relative; height: 100%; }
+  .xlab { position: absolute; top: .42rem; transform: translateX(-50%); font-size: .65rem; color: #868e96; white-space: nowrap; }
   /* A tick above each (visible) label, centred on its bar, so it's clear which bar it marks.
-     Hidden automatically when the label is dropped for overlap (it's the label's pseudo). */
-  .xlab span::before { content: ''; position: absolute; left: 50%; top: -.4rem; transform: translateX(-50%); height: .32rem; border-left: 1px solid #adb5bd; }
+     Hidden automatically when the label is dropped for overlap. */
+  .xlab::before { content: ''; position: absolute; left: 50%; top: -.4rem; transform: translateX(-50%); height: .32rem; border-left: 1px solid #adb5bd; }
 
   /* Click/tap popup: a header + a scrollable, linked list of the bin's stories. */
   #pop { position: fixed; z-index: 20; display: none; flex-direction: column; width: 264px; max-width: 92vw; max-height: 62vh; background: #fff; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); overflow: hidden; }
@@ -186,7 +183,7 @@
     // axis running back in time to the right.
     var view = bins.slice().reverse();
     var barsEl = document.getElementById('bars'), xstrip = document.getElementById('xstrip');
-    var bh = '', xh = '';
+    var bh = '', labs = [];
     view.forEach(function (b, i) {
       var hpct = (b.count / max) * 100;
       var other = b.count - (b.film || 0);
@@ -202,22 +199,33 @@
       else if (b.era === 'century') { if (Math.abs(parseInt(b.label, 10)) % 2 === 1) lab = b.label; } // odd centuries only
       else if (b.era === 'decade') lab = b.label;
       else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
-      xh += '<div class="xlab' + cls + '">' + (lab ? '<span>' + lab + '</span>' : '') + '</div>';
+      labs[i] = lab;
     });
-    barsEl.innerHTML = bh; xstrip.innerHTML = xh;
+    barsEl.innerHTML = bh;
 
-    // Drop any x-label whose box would overlap the previous kept one (left to right).
-    var spans = xstrip.querySelectorAll('.xlab > span');
-    var lastRight = -Infinity;
-    for (var s = 0; s < spans.length; s++) {
-      var rc = spans[s].getBoundingClientRect();
-      if (rc.left < lastRight + 5) spans[s].style.visibility = 'hidden';
-      else lastRight = rc.right;
-    }
-
-    // ── Region annotations (header) + plot shading, measured from the laid-out bars. ──
+    // ── Geometry measured from the laid-out bars (shared by labels, headers, shading). ──
     var total = barsEl.scrollWidth;
     var binEls = barsEl.querySelectorAll('.bin'); // in view order
+
+    // X-axis labels positioned at each bar's measured centre, in a strip exactly as wide as
+    // the bars — so labels stay pinned to their bars and scroll the full range (no drift).
+    var xh = '';
+    for (var xi = 0; xi < view.length; xi++) {
+      if (!labs[xi]) continue;
+      var bel = binEls[xi];
+      xh += '<span class="xlab" style="left:' + (bel.offsetLeft + bel.offsetWidth / 2) + 'px">' + labs[xi] + '</span>';
+    }
+    xstrip.style.width = total + 'px';
+    xstrip.innerHTML = xh;
+
+    // Drop any label whose box would overlap the previous kept one (left to right).
+    var labels = xstrip.querySelectorAll('.xlab');
+    var lastRight = -Infinity;
+    for (var s = 0; s < labels.length; s++) {
+      var rc = labels[s].getBoundingClientRect();
+      if (rc.left < lastRight + 5) labels[s].style.visibility = 'hidden';
+      else lastRight = rc.right;
+    }
 
     // Header: one two-line label (year range + binning mode) per region, ordered by screen
     // position. The by-year span is broken at the millennium (2000–present / 1950–1999) and
