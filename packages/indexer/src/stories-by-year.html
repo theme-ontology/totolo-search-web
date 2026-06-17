@@ -7,7 +7,7 @@
 <title>Stories by year · Theme Ontology</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root { --year:#5b9bd5; --century:#b08968; --bc:#9b7cb6; }
+  :root { --year:#5b9bd5; --century:#b08968; --bc:#9b7cb6; --yw:3.2rem; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
   header.bar { flex: none; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
@@ -25,7 +25,7 @@
   /* Chart: a fixed-height plot area with a y-axis gutter and a horizontally
      scrollable strip of bars. Each bin is a flex column (bar + tick label). */
   .chart { flex: 1; min-height: 0; display: flex; }
-  .yaxis { flex: none; width: 3.2rem; position: relative; font-size: .7rem; color: #868e96; }
+  .yaxis { flex: none; width: var(--yw); position: relative; font-size: .7rem; color: #868e96; }
   .yaxis .tick { position: absolute; right: .4rem; transform: translateY(-50%); font-variant-numeric: tabular-nums; }
   .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; }
   .grid { position: absolute; inset: 0; pointer-events: none; }
@@ -43,7 +43,9 @@
   .bin.century.bc:hover .bar { background: #7a5a99; }
   /* Tick labels sit horizontally under the axis (never angled). The bins mirror the
      bar widths so labels stay aligned; overlapping labels are dropped client-side. */
-  .xaxis { flex: none; height: 1.3rem; }
+  /* Offset the label strip by the y-axis gutter (+ the plot's 1px border) so each
+     label sits directly under its bar — the strip is a sibling of the chart row. */
+  .xaxis { flex: none; height: 1.3rem; margin-left: calc(var(--yw) + 1px); }
   .xstrip { display: flex; gap: 1px; padding: .25rem .3rem 0; min-width: 100%; }
   .xlab { flex: 0 0 9px; font-size: .65rem; color: #868e96; white-space: nowrap; overflow: visible; position: relative; }
   .xlab.decade { flex-basis: 22px; }

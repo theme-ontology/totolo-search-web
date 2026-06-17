@@ -127,9 +127,10 @@ function storiesByYear(stories: RawStory[]): {
       ...(c < 0 ? { bc: true } : {}),
     });
   }
-  // Decades 1900–1949 (all five, zeros kept).
+  // Decades 1900–1949 (all five, zeros kept). Axis label is the short "00s".."40s";
+  // the tooltip carries the full decade + range.
   for (let d = 1900; d <= 1940; d += 10) {
-    bins.push({ label: `${d}s`, tip: `${d}s (${d}–${d + 9})`, count: decadeCount.get(d) ?? 0, era: 'decade' });
+    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: decadeCount.get(d) ?? 0, era: 'decade' });
   }
   // Years 1950..maxYear (zeros kept) for a continuous recent axis.
   if (maxYear >= 1950) {
