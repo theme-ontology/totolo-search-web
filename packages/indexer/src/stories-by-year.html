@@ -50,6 +50,15 @@
   .yaxis .tick.max b { font-weight: 700; color: #495057; }
   .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; cursor: grab; }
   .plot.dragging { cursor: grabbing; }
+  /* Force a thin, always-present classic scrollbar instead of the OS overlay scrollbar
+     (which floats over the bottom of the chart and intercepts clicks on the shortest bars).
+     A styled ::-webkit-scrollbar reverts Chromium to a non-overlay bar that takes its own
+     layout strip below the bars; the JS realigns the y-axis "0" to the bar baseline. */
+  .plot { scrollbar-width: thin; scrollbar-color: #c4cbd2 transparent; }
+  .plot::-webkit-scrollbar { height: 10px; }
+  .plot::-webkit-scrollbar-track { background: transparent; }
+  .plot::-webkit-scrollbar-thumb { background: #c4cbd2; border-radius: 5px; }
+  .plot::-webkit-scrollbar-thumb:hover { background: #aab2bb; }
   .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
   /* White horizontal gridlines in a layer given an explicit pixel width (= the full scroll
      width, exactly like the shade bands), so they span the whole chart when scrolled. Above
@@ -244,6 +253,13 @@
     // ── Geometry measured from the laid-out bars (shared by labels, headers, shading). ──
     var total = barsEl.scrollWidth;
     var binEls = barsEl.querySelectorAll('.bin'); // in view order
+
+    // The always-present horizontal scrollbar takes ~10px at the bottom of the plot, so the
+    // bar area is shorter than the full chart height. Shrink the y-axis to that area (top-
+    // aligned) so its ticks/"0" line up with the bar baseline rather than the chart bottom.
+    var plotForH = document.getElementById('plot');
+    yax.style.height = plotForH.clientHeight + 'px';
+    yax.style.alignSelf = 'flex-start';
 
     // X-axis labels positioned at each bar's measured centre, in a strip exactly as wide as
     // the bars — so labels stay pinned to their bars and scroll the full range (no drift).
