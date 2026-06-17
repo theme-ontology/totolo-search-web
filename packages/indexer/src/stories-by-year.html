@@ -198,8 +198,9 @@
       if (b.film) segs += '<div class="seg film" style="flex:' + b.film + '"></div>';
       bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
       var lab = '';
-      if (b.mill) lab = ''; // labelled on its own background instead
-      else if (b.era === 'century' || b.era === 'decade') lab = b.label;
+      if (b.mill) lab = '…'; // collapsed range: a tick + ellipsis
+      else if (b.era === 'century') { if (Math.abs(parseInt(b.label, 10)) % 2 === 1) lab = b.label; } // odd centuries only
+      else if (b.era === 'decade') lab = b.label;
       else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
       xh += '<div class="xlab' + cls + '">' + (lab ? '<span>' + lab + '</span>' : '') + '</div>';
     });
