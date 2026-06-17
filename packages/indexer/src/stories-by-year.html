@@ -7,7 +7,10 @@
 <title>Stories by year · Theme Ontology</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root { --bar-film:#474e8a; --bar-other:#7eb1dd; --yw:2.4rem;
+  :root { /* Story-format palette: film keeps its indigo, the rest are shades of blue
+             (dark→light: tv, stage, prose, game). */
+          --f-film:#474e8a; --f-tv:#2c6fb3; --f-stage:#4f93cc; --f-prose:#86bce0; --f-game:#bcdcf0;
+          --yw:2.4rem;
           /* Grey panel banding (white gridlines show against it); header a step darker. */
           --band-a:#e6eaee; --band-b:#eef1f4; --hdr:#dce1e6; }
   * { box-sizing: border-box; }
@@ -21,8 +24,11 @@
   .legend { display: flex; gap: 1.1rem; font-size: .78rem; color: #495057; margin: 0 0 .8rem; }
   .legend span { display: inline-flex; align-items: center; gap: .35rem; }
   .legend i.sw { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
-  .legend i.film { background: var(--bar-film); }
-  .legend i.other { background: var(--bar-other); }
+  .legend i.film { background: var(--f-film); }
+  .legend i.tv { background: var(--f-tv); }
+  .legend i.stage { background: var(--f-stage); }
+  .legend i.prose { background: var(--f-prose); }
+  .legend i.game { background: var(--f-game); }
 
   /* Region heading strip above the plot, offset by the y-axis gutter and scrolled in
      sync with the bars. Two lines (year range + binning mode), white with black rules. */
@@ -58,17 +64,20 @@
   /* Single uniform light-grey panel behind the bars (scrolls with them). */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; background: var(--band-b); }
   /* Bins coarsen going back in time, so wider categories get wider columns. Bars are
-     stacked: films (movie:) at the base + everything else on top, in two colours. */
+     stacked by story format (film at the base + the blue formats above). */
   .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 3; }
   .bin.decade { flex-basis: 22px; }
   .bin.century { flex-basis: 26px; }
   .bin.mill { flex-basis: 66px; }
   .bin .bar { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 0; }
   .bin .seg { cursor: pointer; }
-  .bin .seg.other { background: var(--bar-other); }
-  .bin .seg.film { background: var(--bar-film); }
-  /* Thin white separator between stacked segments (only when both are present). */
-  .bin .seg.other + .seg.film { border-top: 1px solid #fff; }
+  .bin .seg.film { background: var(--f-film); }
+  .bin .seg.tv { background: var(--f-tv); }
+  .bin .seg.stage { background: var(--f-stage); }
+  .bin .seg.prose { background: var(--f-prose); }
+  .bin .seg.game { background: var(--f-game); }
+  /* Thin white separator between adjacent stacked segments. */
+  .bin .seg + .seg { border-top: 1px solid #fff; }
   .bin:hover .bar { filter: brightness(.92); }
 
   /* X-axis tick labels, horizontal (never angled), mirroring the bar widths so each label
@@ -90,8 +99,11 @@
   #pop ul { list-style: none; margin: 0; padding: .25rem 0; overflow-y: auto; }
   #pop li { display: flex; align-items: center; gap: .45rem; padding: .16rem .7rem; font-size: .8rem; }
   #pop li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  #pop li .dot.film { background: var(--bar-film); }
-  #pop li .dot.other { background: var(--bar-other); }
+  #pop li .dot.film { background: var(--f-film); }
+  #pop li .dot.tv { background: var(--f-tv); }
+  #pop li .dot.stage { background: var(--f-stage); }
+  #pop li .dot.prose { background: var(--f-prose); }
+  #pop li .dot.game { background: var(--f-game); }
   #pop li a, #pop li span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #pop li a { color: #1f6feb; text-decoration: none; }
   #pop li a:hover { text-decoration: underline; }
@@ -108,8 +120,11 @@
 <main>
   <p class="intro" id="intro">Loading…</p>
   <div class="legend" id="legend" style="display:none">
-    <span><i class="sw film"></i>films</span>
-    <span><i class="sw other"></i>other</span>
+    <span><i class="sw film"></i>film</span>
+    <span><i class="sw tv"></i>TV</span>
+    <span><i class="sw stage"></i>stage</span>
+    <span><i class="sw prose"></i>prose</span>
+    <span><i class="sw game"></i>game</span>
   </div>
   <div id="err" style="display:none"></div>
   <div class="zonebar" id="zonebar" style="display:none"><div class="zstrip" id="zstrip"></div></div>
@@ -141,6 +156,15 @@
     var n = max / pow;
     return Math.max(1, (n < 2 ? 0.2 : n < 5 ? 0.5 : 1) * pow);
   }
+
+  // Story formats, stacking order (film at the base of each bar, blues above) and the
+  // singular/plural nouns used in the popup header.
+  var FMTS = ['film', 'tv', 'stage', 'prose', 'game'];
+  var FMT_LABEL = {
+    film: ['film', 'films'], tv: ['TV episode', 'TV episodes'],
+    stage: ['stage work', 'stage works'], prose: ['prose work', 'prose works'],
+    game: ['game', 'games']
+  };
 
   function init(data) {
     var bins = data.bins || [];
@@ -187,13 +211,16 @@
     var bh = '', labs = [];
     view.forEach(function (b, i) {
       var hpct = (b.count / max) * 100;
-      var other = b.count - (b.film || 0);
+      var by = b.by || {};
       var cls = b.era === 'century' ? (b.bc ? ' century bc' : (b.mill ? ' century mill' : ' century')) : (b.era === 'decade' ? ' decade' : ' year');
-      // Stacked: films at the base, everything else above. flex-grow splits by count.
-      // Zero-count segments are omitted so single-format bars carry no separator.
+      // Stacked by format: film at the base, the blue formats above (DOM order is
+      // top→bottom, so iterate formats in reverse). flex-grow splits height by count;
+      // zero-count segments are omitted so single-format bars carry no separator.
       var segs = '';
-      if (other > 0) segs += '<div class="seg other" style="flex:' + other + '"></div>';
-      if (b.film) segs += '<div class="seg film" style="flex:' + b.film + '"></div>';
+      for (var fi = FMTS.length - 1; fi >= 0; fi--) {
+        var fk = FMTS[fi], fc = by[fk] || 0;
+        if (fc > 0) segs += '<div class="seg ' + fk + '" data-fmt="' + fk + '" style="flex:' + fc + '"></div>';
+      }
       bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
       var lab = '';
       if (b.mill) lab = '…'; // collapsed range: a tick + ellipsis
@@ -322,30 +349,26 @@
     function hidePop() { pop.style.display = 'none'; }
     function ymd(y) { return y < 0 ? (-y) + ' BCE' : '' + y; }
 
-    // Click/tap a bar → list its stories (linked). filter: 'film' / 'other' (the clicked
-    // stack segment). `e` is the click event, used to anchor the popup at the tap point.
+    // Click/tap a bar → list its stories (linked). filter: a story-format key (the clicked
+    // stack segment), or null for the whole bin. `e` is the click event, used to anchor the
+    // popup at the tap point.
     function openPop(bin, filter, e) {
       var b = view[+bin.getAttribute('data-i')];
       if (!b || !b.count) return;
       var items = (b.items || []);
-      if (filter === 'film') items = items.filter(function (it) { return it.f; });
-      else if (filter === 'other') items = items.filter(function (it) { return !it.f; });
+      if (filter) items = items.filter(function (it) { return it.fmt === filter; });
       if (!items.length) return;
       var n = items.length;
       var sub;
-      if (filter === 'film') sub = n.toLocaleString() + ' film' + (n === 1 ? '' : 's');
-      else if (filter === 'other') sub = n.toLocaleString() + ' non-film' + (n === 1 ? '' : 's');
-      else {
-        var films = b.film ? b.film.toLocaleString() + ' film' + (b.film === 1 ? '' : 's') : '';
-        sub = b.count.toLocaleString() + ' stor' + (b.count === 1 ? 'y' : 'ies') + (films ? ' · ' + films : '');
-      }
+      if (filter) { var lab = FMT_LABEL[filter] || [filter, filter]; sub = n.toLocaleString() + ' ' + (n === 1 ? lab[0] : lab[1]); }
+      else sub = b.count.toLocaleString() + ' stor' + (b.count === 1 ? 'y' : 'ies');
       popTitle.innerHTML = esc(b.tip || b.label) + ' <span class="sub">' + sub + '</span>';
       var showYr = b.era !== 'year'; // a single year is redundant per row
       var html = '';
       items.forEach(function (it) {
         var name = esc(it.t);
         var label = it.s ? '<a href="../../story/' + it.s + '.html">' + name + '</a>' : '<span class="t">' + name + '</span>';
-        html += '<li><span class="dot ' + (it.f ? 'film' : 'other') + '"></span>' + label
+        html += '<li><span class="dot ' + it.fmt + '"></span>' + label
           + (showYr ? '<span class="yr">' + ymd(it.y) + '</span>' : '') + '</li>';
       });
       popList.innerHTML = html;
@@ -369,7 +392,7 @@
       var seg = e.target.closest ? e.target.closest('.seg') : null;
       if (!seg) return;
       e.stopPropagation();
-      openPop(seg.closest('.bin'), seg.classList.contains('film') ? 'film' : 'other', e);
+      openPop(seg.closest('.bin'), seg.getAttribute('data-fmt'), e);
     });
     pop.addEventListener('click', function (e) { e.stopPropagation(); }); // links still navigate
     document.getElementById('pop-close').addEventListener('click', hidePop);
