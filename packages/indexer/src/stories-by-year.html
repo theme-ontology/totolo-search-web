@@ -50,8 +50,6 @@
   .grid { position: absolute; top: 0; bottom: 0; left: 0; z-index: 1; pointer-events: none; }
   .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; }
   .gline.top { border-top-color: #cdd3d9; }
-  /* Gray dotted dividers at every millennium boundary. Scroll with the bars. */
-  .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 2; pointer-events: none; }
   /* White vertical gridlines at the former decade/region shade boundaries. */
   .vline { position: absolute; top: 0; bottom: 0; border-left: 1px solid #fff; z-index: 1; pointer-events: none; }
   /* Thick white zig-zag scale-break at granularity changes (above panel, below dotted line).
@@ -304,33 +302,16 @@
     });
     var shadeHtml = '<div class="zone-shade" style="left:0;width:' + total + 'px"></div>';
 
-    // Gray dotted dividers at every millennium boundary (year 0, 1000, 2000, …).
-    var mblock = function (b) {
-      if (b.bc) return -1;
-      if (b.mill) return 0;
-      if (b.era === 'year') return Math.floor(+b.label / 1000); // 2000 starts a new block
-      return 1; // CE centuries + decades sit in the 2nd millennium
-    };
-    var millHtml = '', millX = [];
-    for (var mi = 1; mi < view.length; mi++) {
-      if (mblock(view[mi]) !== mblock(view[mi - 1])) {
-        var mx = binEls[mi].offsetLeft - 1;
-        millHtml += '<div class="mill-line" style="left:' + mx + 'px"></div>';
-        millX.push(mx);
-      }
-    }
-    // White vertical gridline at each former shade boundary (skip those a millennium divider
-    // already marks, so the two don't double up).
+    // White vertical gridline at each former shade boundary (skip those a zig-zag marks).
     var vlineHtml = '';
-    var skipX = millX.concat(zzX); // a zig-zag or dotted divider already marks these
     cells.forEach(function (c, i) {
       if (i === 0) return;
       var x = binEls[c.start].offsetLeft;
-      if (!skipX.some(function (m) { return Math.abs(m - x) <= 2; })) {
+      if (!zzX.some(function (m) { return Math.abs(m - x) <= 2; })) {
         vlineHtml += '<div class="vline" style="left:' + x + 'px"></div>';
       }
     });
-    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + zzHtml + vlineHtml + millHtml);
+    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + zzHtml + vlineHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;
