@@ -44,6 +44,8 @@
   .grid .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #f1f3f5; }
   .grid .gline.top { border-top-color: #e3e6e9; }
   .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
+  /* Subtle dotted divider at year 0 (the BC/AD boundary). Scrolls with the bars. */
+  .zero-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
   /* Region shading, scrolls with the bars (placed inside .bars), behind them. */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; }
   .zone-shade.z-bc { background: var(--z-bc); }
@@ -187,6 +189,9 @@
       shadeHtml += '<div class="zone-shade ' + p.r.cls + '" style="' + st + '"></div>';
       zoneHtml += '<div class="zlabel ' + p.r.cls + '" style="' + st + '">' + p.r.label + '</div>';
     });
+    // Year-0 divider at the BC/AD century boundary (left edge of the first AD century).
+    var adc = present.filter(function (p) { return p.r.cls === 'z-adc'; })[0];
+    if (adc) shadeHtml += '<div class="zero-line" style="left:' + adc.left + 'px"></div>';
     barsEl.insertAdjacentHTML('afterbegin', shadeHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';

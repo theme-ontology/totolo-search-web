@@ -115,17 +115,22 @@ function storiesByYear(stories: RawStory[]): {
     }
   }
   const bins: Array<{ label: string; tip: string; count: number; era: 'year' | 'decade' | 'century'; bc?: boolean }> = [];
-  // Centuries (only populated), oldest first. A century starting at c spans [c, c+99].
-  for (const c of [...centuryCount.keys()].sort((a, b) => a - b)) {
-    const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
-    const range = c >= 0 ? `${c}–${c + 99}` : `${-c}–${-(c + 99)} BC`;
-    bins.push({
-      label: c >= 0 ? ord : `${ord} BC`,
-      tip: c >= 0 ? `${ord} century (${range})` : `${ord} century BC (${range})`,
-      count: centuryCount.get(c) ?? 0,
-      era: 'century',
-      ...(c < 0 ? { bc: true } : {}),
-    });
+  // Centuries from the earliest populated one through the 1800s, oldest first, INCLUDING
+  // empty centuries so the axis is contiguous (no gaps). A century starting at c spans
+  // [c, c+99]; c=0 is the 1st century AD, c=-100 the 1st century BC.
+  const centStarts = [...centuryCount.keys()];
+  if (centStarts.length) {
+    for (let c = Math.min(...centStarts); c <= 1800; c += 100) {
+      const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
+      const range = c >= 0 ? `${c}–${c + 99}` : `${-c}–${-(c + 99)} BC`;
+      bins.push({
+        label: c >= 0 ? ord : `${ord} BC`,
+        tip: c >= 0 ? `${ord} century (${range})` : `${ord} century BC (${range})`,
+        count: centuryCount.get(c) ?? 0,
+        era: 'century',
+        ...(c < 0 ? { bc: true } : {}),
+      });
+    }
   }
   // Decades 1900–1949 (all five, zeros kept). Axis label is the short "00s".."40s";
   // the tooltip carries the full decade + range.
