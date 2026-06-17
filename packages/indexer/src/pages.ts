@@ -132,7 +132,9 @@ function buildFormatMap(stories: RawStory[], collections: RawStory[]): Map<strin
 // kept so the modern axis stays continuous. Centuries are labelled as ordinals ("18th",
 // "6th BC"); BC bins are flagged so the page can colour them distinctly. Each bin carries a
 // per-format breakdown so the page can stack stories by story format.
-interface SbyItem { t: string; s: string; fmt: Fmt; y: number }
+// `cr` is a credit line shown in the popup: the author(s) for authored works, else the
+// title of the (main) collection for TV episodes.
+interface SbyItem { t: string; s: string; fmt: Fmt; y: number; cr?: string }
 interface SbyBin {
   label: string; tip: string; count: number; by: FmtCounts;
   lo: number; hi: number; // year span this bin covers (negative = BCE), for region headers
@@ -143,6 +145,18 @@ function storiesByYear(stories: RawStory[], collections: RawStory[], storySlug: 
   total: number; unknown: number; bins: SbyBin[];
 } {
   const fmtOf = buildFormatMap(stories, collections);
+  // Story → title of the first collection it belongs to (its "main" collection), for the
+  // TV-episode credit line.
+  const collOf = new Map<string, string>();
+  for (const c of collections) {
+    const t = c.title || c.name;
+    for (const cs of c['component stories'] ?? []) if (!collOf.has(cs)) collOf.set(cs, t);
+  }
+  const authorsOf = (s: RawStory): string => {
+    const a = s.authors;
+    if (!a) return '';
+    return (Array.isArray(a) ? a.filter(Boolean).join(', ') : String(a)).trim();
+  };
   // Each bucket holds its stories (title, slug, format, year); count and the per-format
   // breakdown derive from them. The 1st millennium CE (years 1–1000) is a single bucket;
   // centuries otherwise.
@@ -163,7 +177,9 @@ function storiesByYear(stories: RawStory[], collections: RawStory[], storySlug: 
     if (y === null) { unknown++; continue; }
     total++;
     const fmt = fmtOf.get(s.name) ?? formatFromPrefix(s.name);
-    const it: SbyItem = { t: s.title || s.name, s: storySlug.get(s.name) ?? '', fmt, y };
+    const author = authorsOf(s);
+    const cr = author || (fmt === 'tv' ? (collOf.get(s.name) ?? '') : '');
+    const it: SbyItem = { t: s.title || s.name, s: storySlug.get(s.name) ?? '', fmt, y, ...(cr ? { cr } : {}) };
     if (y >= 1950) { add(year, y, it); if (y > maxYear) maxYear = y; }
     else if (y >= 1900) { add(decade, Math.floor(y / 10) * 10, it); }
     else {

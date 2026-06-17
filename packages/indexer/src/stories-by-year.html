@@ -12,7 +12,7 @@
           --f-film:#474e8a; --f-tv:#2c6fb3; --f-stage:#4f93cc; --f-prose:#86bce0; --f-game:#bcdcf0;
           --yw:2.4rem;
           /* Grey panel banding (white gridlines show against it); header a step darker. */
-          --band-a:#e6eaee; --band-b:#eef1f4; --hdr:#dce1e6; }
+          --band-a:#e6eaee; --band-b:#f3f6f9; --hdr:#dce1e6; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #212529; display: flex; flex-direction: column; height: 100vh; }
   header.bar { flex: none; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; padding: .5rem .9rem; border-bottom: 1px solid #dee2e6; background: #fff; }
@@ -48,7 +48,8 @@
   .yaxis .tick.minor i { width: 4px; border-top-color: #ced4da; }
   .yaxis .tick b { margin-right: 5px; font-size: .68rem; font-weight: 400; color: #868e96; font-variant-numeric: tabular-nums; }
   .yaxis .tick.max b { font-weight: 700; color: #495057; }
-  .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; }
+  .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; cursor: grab; }
+  .plot.dragging { cursor: grabbing; }
   .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
   /* White horizontal gridlines in a layer given an explicit pixel width (= the full scroll
      width, exactly like the shade bands), so they span the whole chart when scrolled. Above
@@ -97,14 +98,17 @@
   #pop .pop-head button { margin-left: auto; align-self: flex-start; border: 0; background: none; font-size: 1.15rem; line-height: 1; color: #adb5bd; cursor: pointer; padding: 0 .1rem; }
   #pop .pop-head button:hover { color: #495057; }
   #pop ul { list-style: none; margin: 0; padding: .25rem 0; overflow-y: auto; }
-  #pop li { display: flex; align-items: center; gap: .45rem; padding: .16rem .7rem; font-size: .8rem; }
-  #pop li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  #pop li { display: flex; align-items: baseline; gap: .45rem; padding: .16rem .7rem; font-size: .8rem; }
+  #pop li .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; position: relative; top: 1px; }
+  /* Title + credit line stack in a flex column so both can ellipsis-truncate. */
+  #pop li .txt { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+  #pop li .cr { font-size: .68rem; color: #868e96; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #pop li .dot.film { background: var(--f-film); }
   #pop li .dot.tv { background: var(--f-tv); }
   #pop li .dot.stage { background: var(--f-stage); }
   #pop li .dot.prose { background: var(--f-prose); }
   #pop li .dot.game { background: var(--f-game); }
-  #pop li a, #pop li span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pop li .txt a, #pop li .txt span.t { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #pop li a { color: #1f6feb; text-decoration: none; }
   #pop li a:hover { text-decoration: underline; }
   #pop li .yr { margin-left: auto; padding-left: .5rem; color: #adb5bd; font-variant-numeric: tabular-nums; flex: none; }
@@ -178,6 +182,12 @@
     document.getElementById('zonebar').style.display = '';
     document.getElementById('chart').style.display = '';
     document.getElementById('xaxis').style.display = '';
+
+    // Cap the plot height so the visualization is never taller than it is wide (mainly on
+    // narrow/tall windows and phones). Done before measuring geometry below so the bars and
+    // zig-zag markers use the final height.
+    var chartEl = document.getElementById('chart');
+    chartEl.style.maxHeight = chartEl.clientWidth + 'px';
 
     // ── Y axis: major (labelled) + minor (short) ticks, exact max written at the top. ──
     var step = niceStep(max);
@@ -310,7 +320,7 @@
     var zzHtml = '';
     zzX.forEach(function (x) {
       zzHtml += '<svg class="zigzag" width="' + zzW + '" height="' + zzH + '" style="left:' + x + 'px">'
-        + '<polyline points="' + zzPoly + '" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+        + '<polyline points="' + zzPoly + '" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
     });
 
     // Plot: a single uniform light-grey panel. The former decade/region shade transitions
@@ -367,8 +377,9 @@
       var html = '';
       items.forEach(function (it) {
         var name = esc(it.t);
-        var label = it.s ? '<a href="../../story/' + it.s + '.html">' + name + '</a>' : '<span class="t">' + name + '</span>';
-        html += '<li><span class="dot ' + it.fmt + '"></span>' + label
+        var title = it.s ? '<a href="../../story/' + it.s + '.html">' + name + '</a>' : '<span class="t">' + name + '</span>';
+        var cr = it.cr ? '<span class="cr">' + esc(it.cr) + '</span>' : '';
+        html += '<li><span class="dot ' + it.fmt + '"></span><span class="txt">' + title + cr + '</span>'
           + (showYr ? '<span class="yr">' + ymd(it.y) + '</span>' : '') + '</li>';
       });
       popList.innerHTML = html;
@@ -386,7 +397,31 @@
       pop.style.top = Math.max(8, top) + 'px';
     }
 
+    // Desktop panning: the mouse wheel scrolls the timeline horizontally, and you can
+    // click-drag the background to pan. Touch devices already pan natively, so those pointers
+    // are left to the browser.
+    var plot = document.getElementById('plot');
+    var dragging = false, dragMoved = false, dragFromX = 0, dragFromScroll = 0;
+    plot.addEventListener('wheel', function (e) {
+      if (!e.deltaY) return;
+      plot.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    plot.addEventListener('pointerdown', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') return;
+      dragging = true; dragMoved = false; dragFromX = e.clientX; dragFromScroll = plot.scrollLeft;
+    });
+    plot.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var dx = e.clientX - dragFromX;
+      if (!dragMoved && Math.abs(dx) < 4) return; // tolerate a little jitter before it's a drag
+      dragMoved = true; plot.classList.add('dragging'); plot.scrollLeft = dragFromScroll - dx;
+    });
+    window.addEventListener('pointerup', function () { dragging = false; plot.classList.remove('dragging'); });
+
     barsEl.addEventListener('click', function (e) {
+      // A drag-pan ends with a synthetic click on the bar under the pointer — swallow it.
+      if (dragMoved) { dragMoved = false; return; }
       // Only a click on an actual bar segment opens a popup; clicks on the empty column
       // (just background to the eye) fall through to the document handler, which closes it.
       var seg = e.target.closest ? e.target.closest('.seg') : null;
@@ -405,7 +440,7 @@
     }, { passive: true });
 
     // ── Scroll sync (drives the strips) + dismiss the popup on chart scroll. ──
-    var plot = document.getElementById('plot'), xa = document.getElementById('xaxis'), zb = document.getElementById('zonebar');
+    var xa = document.getElementById('xaxis'), zb = document.getElementById('zonebar');
     plot.addEventListener('scroll', function () { xa.scrollLeft = plot.scrollLeft; zb.scrollLeft = plot.scrollLeft; hidePop(); });
   }
 })();
