@@ -52,10 +52,10 @@
   .gline.top { border-top-color: #cdd3d9; }
   /* Gray dotted dividers at every millennium boundary. Scroll with the bars. */
   .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
-  /* Region/decade shading, scrolls with the bars (placed inside .bars), behind them. */
-  .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; }
-  .zone-shade.z-a { background: var(--band-a); }
-  .zone-shade.z-b { background: var(--band-b); }
+  /* White vertical gridlines at the former decade/region shade boundaries. */
+  .vline { position: absolute; top: 0; bottom: 0; border-left: 1px solid #fff; z-index: 1; pointer-events: none; }
+  /* Single uniform light-grey panel behind the bars (scrolls with them). */
+  .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; background: var(--band-b); }
   /* Bins coarsen going back in time, so wider categories get wider columns. Bars are
      stacked: films (movie:) at the base + everything else on top, in two colours. */
   .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 2; }
@@ -264,8 +264,10 @@
         + '<span class="r">' + p.range + '</span><span class="m">' + p.mode + '</span></div>';
     });
 
-    // Plot shading: alternating grey cells — one per decade inside the by-year region,
-    // one per whole region elsewhere — and short ticks at the by-year decade boundaries.
+    // Plot: a single uniform light-grey panel. The former decade/region shade transitions
+    // become white vertical gridlines instead. Cells = one per decade in the by-year region,
+    // one per whole region elsewhere; a boundary sits at the left edge of each cell after the
+    // first.
     var cellKey = function (b) {
       return b.era === 'year' ? 'y' + Math.floor(+b.label / 10)
         : b.era === 'decade' ? 'd' : (b.bc ? 'cb' : 'cc');
@@ -274,29 +276,36 @@
     view.forEach(function (b, i) {
       var k = cellKey(b), last = cells[cells.length - 1];
       if (last && last.key === k) last.end = i;
-      else cells.push({ key: k, start: i, end: i, year: b.era === 'year' });
+      else cells.push({ key: k, start: i, end: i });
     });
-    var shadeHtml = '';
-    cells.forEach(function (c, i) {
-      var L = i === 0 ? 0 : binEls[c.start].offsetLeft;
-      var R = i === cells.length - 1 ? total : binEls[cells[i + 1].start].offsetLeft;
-      shadeHtml += '<div class="zone-shade ' + (i % 2 ? 'z-b' : 'z-a') + '" style="left:' + L + 'px;width:' + (R - L) + 'px"></div>';
-    });
-    // Gray dotted dividers at every millennium boundary (where the 1000-year block changes:
-    // year 0, 1000, 2000, …; the 1st-millennium bucket is years 1–1000).
+    var shadeHtml = '<div class="zone-shade" style="left:0;width:' + total + 'px"></div>';
+
+    // Gray dotted dividers at every millennium boundary (year 0, 1000, 2000, …).
     var mblock = function (b) {
       if (b.bc) return -1;
       if (b.mill) return 0;
       if (b.era === 'year') return Math.floor(+b.label / 1000); // 2000 starts a new block
       return 1; // CE centuries + decades sit in the 2nd millennium
     };
-    var millHtml = '';
+    var millHtml = '', millX = [];
     for (var mi = 1; mi < view.length; mi++) {
       if (mblock(view[mi]) !== mblock(view[mi - 1])) {
-        millHtml += '<div class="mill-line" style="left:' + (binEls[mi].offsetLeft - 1) + 'px"></div>';
+        var mx = binEls[mi].offsetLeft - 1;
+        millHtml += '<div class="mill-line" style="left:' + mx + 'px"></div>';
+        millX.push(mx);
       }
     }
-    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + millHtml);
+    // White vertical gridline at each former shade boundary (skip those a millennium divider
+    // already marks, so the two don't double up).
+    var vlineHtml = '';
+    cells.forEach(function (c, i) {
+      if (i === 0) return;
+      var x = binEls[c.start].offsetLeft;
+      if (!millX.some(function (m) { return Math.abs(m - x) <= 2; })) {
+        vlineHtml += '<div class="vline" style="left:' + x + 'px"></div>';
+      }
+    });
+    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + vlineHtml + millHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;
