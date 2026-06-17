@@ -78,41 +78,63 @@ function storyYear(date: string | undefined): number | null {
   return /\bbc\b/i.test(date) ? -y : y;
 }
 
-// Histogram of story counts: one bin per year from 1900 onward, one bin per
-// century before that (only centuries that actually contain stories). Empty years
-// in [1900, maxYear] are kept so the recent axis stays continuous.
+// 1, 2, 3 -> "1st", "2nd", "3rd"; 11/12/13 and the rest -> "Nth".
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+}
+
+// Histogram of story counts, with bins coarsening as they go back in time: one bin per
+// year from 1950 onward, one per decade for 1900–1949, one per century before 1900 (only
+// centuries that actually contain stories). Empty years/decades inside their ranges are
+// kept so the modern axis stays continuous. Centuries are labelled as ordinals ("18th",
+// "6th BC"); BC bins are flagged so the page can colour them distinctly.
 function storiesByYear(stories: RawStory[]): {
   total: number;
   unknown: number;
-  bins: Array<{ label: string; short?: string; count: number; era: 'year' | 'century' }>;
+  bins: Array<{ label: string; tip: string; count: number; era: 'year' | 'decade' | 'century'; bc?: boolean }>;
 } {
   const yearCount = new Map<number, number>();
+  const decadeCount = new Map<number, number>();
   const centuryCount = new Map<number, number>();
   let total = 0, unknown = 0, maxYear = -Infinity;
   for (const s of stories) {
     const y = storyYear(s.date);
     if (y === null) { unknown++; continue; }
     total++;
-    if (y >= 1900) {
+    if (y >= 1950) {
       yearCount.set(y, (yearCount.get(y) ?? 0) + 1);
       if (y > maxYear) maxYear = y;
+    } else if (y >= 1900) {
+      const d = Math.floor(y / 10) * 10;
+      decadeCount.set(d, (decadeCount.get(d) ?? 0) + 1);
     } else {
       const c = Math.floor(y / 100) * 100;
       centuryCount.set(c, (centuryCount.get(c) ?? 0) + 1);
     }
   }
-  // A century starting at s spans [s, s+99]; full label oldest→newest (for the tooltip),
-  // plus a compact axis label ("1500s", "600s BC"). BC where negative.
-  const centLabel = (s: number): string =>
-    s >= 0 ? `${s}–${s + 99}` : `${-s}–${-(s + 99)} BC`;
-  const centShort = (s: number): string => (s >= 0 ? `${s}s` : `${-s}s BC`);
-  const bins: Array<{ label: string; short?: string; count: number; era: 'year' | 'century' }> = [];
-  for (const s of [...centuryCount.keys()].sort((a, b) => a - b)) {
-    bins.push({ label: centLabel(s), short: centShort(s), count: centuryCount.get(s) ?? 0, era: 'century' });
+  const bins: Array<{ label: string; tip: string; count: number; era: 'year' | 'decade' | 'century'; bc?: boolean }> = [];
+  // Centuries (only populated), oldest first. A century starting at c spans [c, c+99].
+  for (const c of [...centuryCount.keys()].sort((a, b) => a - b)) {
+    const ord = ordinal(c >= 0 ? c / 100 + 1 : -c / 100);
+    const range = c >= 0 ? `${c}–${c + 99}` : `${-c}–${-(c + 99)} BC`;
+    bins.push({
+      label: c >= 0 ? ord : `${ord} BC`,
+      tip: c >= 0 ? `${ord} century (${range})` : `${ord} century BC (${range})`,
+      count: centuryCount.get(c) ?? 0,
+      era: 'century',
+      ...(c < 0 ? { bc: true } : {}),
+    });
   }
-  if (maxYear >= 1900) {
-    for (let y = 1900; y <= maxYear; y++) {
-      bins.push({ label: String(y), count: yearCount.get(y) ?? 0, era: 'year' });
+  // Decades 1900–1949 (all five, zeros kept).
+  for (let d = 1900; d <= 1940; d += 10) {
+    bins.push({ label: `${d}s`, tip: `${d}s (${d}–${d + 9})`, count: decadeCount.get(d) ?? 0, era: 'decade' });
+  }
+  // Years 1950..maxYear (zeros kept) for a continuous recent axis.
+  if (maxYear >= 1950) {
+    for (let y = 1950; y <= maxYear; y++) {
+      bins.push({ label: String(y), tip: String(y), count: yearCount.get(y) ?? 0, era: 'year' });
     }
   }
   return { total, unknown, bins };
