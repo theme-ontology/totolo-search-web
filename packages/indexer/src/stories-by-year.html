@@ -24,12 +24,14 @@
   .legend i.film { background: var(--bar-film); }
   .legend i.other { background: var(--bar-other); }
 
-  /* Region annotation strip above the plot, offset by the y-axis gutter and scrolled
-     in sync with the bars. Each label spans (and tints) its region's horizontal extent. */
-  .zonebar { flex: none; height: 1.4rem; margin-left: calc(var(--yw) + 1px); overflow: hidden; }
+  /* Region heading strip above the plot, offset by the y-axis gutter and scrolled in
+     sync with the bars. Two lines (year range + binning mode), white with black rules. */
+  .zonebar { flex: none; height: 2.6rem; margin-left: calc(var(--yw) + 1px); overflow: hidden; }
   .zstrip { position: relative; height: 100%; }
-  .zlabel { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #495057; white-space: nowrap; overflow: hidden; background: var(--hdr); }
-  .zlabel + .zlabel { border-left: 1px solid #cdd3d9; }
+  .zlabel { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .05rem; text-align: center; line-height: 1.15; overflow: hidden; background: #fff; border-bottom: 1px solid #212529; }
+  .zlabel .r { font-size: .7rem; font-weight: 600; color: #212529; white-space: nowrap; }
+  .zlabel .m { font-size: .66rem; color: #868e96; white-space: nowrap; }
+  .zlabel + .zlabel { border-left: 1px solid #212529; }
 
   /* Chart: y-axis gutter + a horizontally scrollable plot of equal-gap bars. */
   .chart { flex: 1; min-height: 0; display: flex; }
@@ -41,14 +43,15 @@
   .yaxis .tick b { margin-right: 5px; font-size: .68rem; font-weight: 400; color: #868e96; font-variant-numeric: tabular-nums; }
   .yaxis .tick.max b { font-weight: 700; color: #495057; }
   .plot { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; position: relative; border-left: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6; }
-  /* Very subtle horizontal grid (fixed; doesn't scroll). Sits above the region shading
-     but below the bars. */
-  .grid { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-  .grid .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; }
-  .grid .gline.top { border-top-color: #cdd3d9; }
   .bars { position: relative; height: 100%; display: flex; align-items: flex-end; gap: 1px; padding: 0 .3rem; min-width: 100%; }
-  /* Subtle dotted divider at year 0 (the BC/AD boundary). Scrolls with the bars. */
-  .zero-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
+  /* White horizontal gridlines, inside .bars so they span the full scroll width. Above the
+     shading, below the bars. */
+  .gline { position: absolute; left: 0; right: 0; border-top: 1px solid #ffffff; z-index: 1; pointer-events: none; }
+  .gline.top { border-top-color: #cdd3d9; }
+  /* Gray dotted dividers at every millennium boundary. Scroll with the bars. */
+  .mill-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted #adb5bd; z-index: 1; pointer-events: none; }
+  /* Faint label written on the (wider) 1st-millennium bucket's background. */
+  .mill-note { position: absolute; top: 0; left: 0; right: 0; padding: .45rem .25rem 0; text-align: center; font-size: .62rem; line-height: 1.2; color: #b6bbc2; z-index: 1; pointer-events: none; }
   /* Region/decade shading, scrolls with the bars (placed inside .bars), behind them. */
   .zone-shade { position: absolute; top: 0; bottom: 0; z-index: 0; }
   .zone-shade.z-a { background: var(--band-a); }
@@ -60,6 +63,7 @@
   .bin { flex: 0 0 9px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; position: relative; z-index: 2; }
   .bin.decade { flex-basis: 22px; }
   .bin.century { flex-basis: 26px; }
+  .bin.mill { flex-basis: 66px; }
   .bin .bar { width: 100%; display: flex; flex-direction: column; border-radius: 2px 2px 0 0; overflow: hidden; min-height: 0; }
   .bin { cursor: pointer; }
   .bin .seg.other { background: var(--bar-other); }
@@ -75,6 +79,7 @@
   .xlab { flex: 0 0 9px; font-size: .65rem; color: #868e96; white-space: nowrap; overflow: visible; position: relative; }
   .xlab.decade { flex-basis: 22px; }
   .xlab.century { flex-basis: 26px; }
+  .xlab.mill { flex-basis: 66px; }
   .xlab span { position: absolute; left: 50%; top: 0; transform: translateX(-50%); }
 
   /* Click/tap popup: a header + a scrollable, linked list of the bin's stories. */
@@ -112,7 +117,6 @@
   <div class="chart" id="chart" style="display:none">
     <div class="yaxis" id="yaxis"></div>
     <div class="plot" id="plot">
-      <div class="grid" id="grid"></div>
       <div class="bars" id="bars"></div>
     </div>
   </div>
@@ -156,8 +160,8 @@
     var step = niceStep(max);
     var lead = step / Math.pow(10, Math.floor(Math.log10(step)));   // 1, 2 or 5
     var minor = step / (Math.round(lead) === 2 ? 4 : 5);            // keeps minors round
-    var yax = document.getElementById('yaxis'), grid = document.getElementById('grid');
-    var yh = '', gh = '';
+    var yax = document.getElementById('yaxis');
+    var yh = '', gh = '';   // gh (gridlines) is inserted into .bars below so it spans the scroll width
     var pctOf = function (v) { return 100 - (v / max) * 100; };
     if (minor >= 1) {
       for (var v = minor; v < max - 1e-6; v += minor) {
@@ -174,7 +178,7 @@
     // The max, always written, exactly at the top.
     yh += '<span class="tick major max" style="top:0"><b>' + Math.round(max) + '</b><i></i></span>';
     gh += '<div class="gline top" style="top:0"></div>';
-    yax.innerHTML = yh; grid.innerHTML = gh;
+    yax.innerHTML = yh;
 
     // ── Bars + x-axis labels ──
     // Inverted: newest first, so modern times are visible at load (scrollLeft 0) with the
@@ -185,15 +189,17 @@
     view.forEach(function (b, i) {
       var hpct = (b.count / max) * 100;
       var other = b.count - (b.film || 0);
-      var cls = b.era === 'century' ? (b.bc ? ' century bc' : ' century') : (b.era === 'decade' ? ' decade' : ' year');
+      var cls = b.era === 'century' ? (b.bc ? ' century bc' : (b.mill ? ' century mill' : ' century')) : (b.era === 'decade' ? ' decade' : ' year');
       // Stacked: films at the base, everything else above. flex-grow splits by count.
       // Zero-count segments are omitted so single-format bars carry no separator.
       var segs = '';
       if (other > 0) segs += '<div class="seg other" style="flex:' + other + '"></div>';
       if (b.film) segs += '<div class="seg film" style="flex:' + b.film + '"></div>';
-      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
+      var note = b.mill ? '<div class="mill-note">first millennium</div>' : '';
+      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div>' + note + '</div>';
       var lab = '';
-      if (b.era === 'century' || b.era === 'decade') lab = b.label;
+      if (b.mill) lab = ''; // labelled on its own background instead
+      else if (b.era === 'century' || b.era === 'decade') lab = b.label;
       else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
       xh += '<div class="xlab' + cls + '">' + (lab ? '<span>' + lab + '</span>' : '') + '</div>';
     });
@@ -212,25 +218,32 @@
     var total = barsEl.scrollWidth;
     var binEls = barsEl.querySelectorAll('.bin'); // in view order
 
-    // Header: one label spanning each binning region (ordered by screen position so it
-    // works whichever way the axis runs).
-    var regions = [
-      { sel: '.bin.bc', label: 'by century BCE' },
-      { sel: '.bin.century:not(.bc)', label: 'by century CE' },
-      { sel: '.bin.decade', label: 'by decade' },
-      { sel: '.bin.year', label: 'by year' },
+    // Header: one two-line label per binning region (year range + mode), ordered by screen
+    // position so it works whichever way the axis runs. Range is computed from the bins' spans.
+    var regionDefs = [
+      { sel: '.bin.bc', mode: 'by century', test: function (b) { return b.era === 'century' && b.bc; } },
+      { sel: '.bin.century:not(.bc)', mode: 'by century', test: function (b) { return b.era === 'century' && !b.bc; } },
+      { sel: '.bin.decade', mode: 'by decade', test: function (b) { return b.era === 'decade'; } },
+      { sel: '.bin.year', mode: 'by year', test: function (b) { return b.era === 'year'; } },
     ];
     var present = [];
-    regions.forEach(function (r) {
-      var el = barsEl.querySelector(r.sel);
-      if (el) present.push({ label: r.label, left: el.offsetLeft });
+    regionDefs.forEach(function (rd) {
+      var mem = bins.filter(rd.test);
+      if (!mem.length) return;
+      var el = barsEl.querySelector(rd.sel);
+      var lo = Math.min.apply(null, mem.map(function (b) { return b.lo; }));
+      var hi = Math.max.apply(null, mem.map(function (b) { return b.hi; }));
+      var range = lo < 0 ? Math.abs(lo) + '–' + Math.abs(hi) + ' BCE'
+        : (hi <= 1899 ? lo + '–' + hi + ' CE' : lo + '–' + hi);
+      present.push({ mode: rd.mode, range: range, left: el ? el.offsetLeft : 0 });
     });
     present.sort(function (a, b) { return a.left - b.left; });
     var zoneHtml = '';
     present.forEach(function (p, i) {
       var L = i === 0 ? 0 : p.left;
       var R = i === present.length - 1 ? total : present[i + 1].left;
-      zoneHtml += '<div class="zlabel" style="left:' + L + 'px;width:' + (R - L) + 'px">' + p.label + '</div>';
+      zoneHtml += '<div class="zlabel" style="left:' + L + 'px;width:' + (R - L) + 'px">'
+        + '<span class="r">' + p.range + '</span><span class="m">' + p.mode + '</span></div>';
     });
 
     // Plot shading: alternating grey cells — one per decade inside the by-year region,
@@ -254,11 +267,21 @@
         tickHtml += '<div class="decade-tick" style="left:' + (binEls[c.start].offsetLeft - 1) + 'px"></div>';
       }
     });
-    // Year-0 divider: the shared boundary between the BCE and CE century bands.
-    var bcEl = barsEl.querySelector('.bin.bc'), ceEl = barsEl.querySelector('.bin.century:not(.bc)');
-    var zeroHtml = (bcEl && ceEl)
-      ? '<div class="zero-line" style="left:' + Math.max(bcEl.offsetLeft, ceEl.offsetLeft) + 'px"></div>' : '';
-    barsEl.insertAdjacentHTML('afterbegin', shadeHtml + tickHtml + zeroHtml);
+    // Gray dotted dividers at every millennium boundary (where the 1000-year block changes:
+    // year 0, 1000, 2000, …; the 1st-millennium bucket is years 1–1000).
+    var mblock = function (b) {
+      if (b.bc) return -1;
+      if (b.mill) return 0;
+      if (b.era === 'year') return Math.floor((+b.label - 1) / 1000);
+      return 1; // CE centuries + decades sit in the 2nd millennium
+    };
+    var millHtml = '';
+    for (var mi = 1; mi < view.length; mi++) {
+      if (mblock(view[mi]) !== mblock(view[mi - 1])) {
+        millHtml += '<div class="mill-line" style="left:' + (binEls[mi].offsetLeft - 1) + 'px"></div>';
+      }
+    }
+    barsEl.insertAdjacentHTML('afterbegin', gh + shadeHtml + tickHtml + millHtml);
     var zstrip = document.getElementById('zstrip');
     zstrip.style.width = total + 'px';
     zstrip.innerHTML = zoneHtml;

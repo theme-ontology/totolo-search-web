@@ -93,6 +93,7 @@ function ordinal(n: number): string {
 interface SbyItem { t: string; s: string; f: 0 | 1; y: number }
 interface SbyBin {
   label: string; tip: string; count: number; film: number;
+  lo: number; hi: number; // year span this bin covers (negative = BCE), for region headers
   era: 'year' | 'decade' | 'century'; bc?: boolean; mill?: boolean; items: SbyItem[];
 }
 
@@ -140,7 +141,7 @@ function storiesByYear(stories: RawStory[], storySlug: Map<string, string>): {
       if (c >= 0 && c <= 900) {                 // 1st–10th c. CE → one millennium bucket
         if (!emittedMill) {
           take(mill);
-          bins.push({ label: '1st mill.', tip: '1st millennium CE (1–1000)', count: mill.n, film: mill.f, era: 'century', mill: true, items: mill.items });
+          bins.push({ label: '1st mill.', tip: '1st millennium CE (1–1000)', count: mill.n, film: mill.f, lo: 1, hi: 1000, era: 'century', mill: true, items: mill.items });
           emittedMill = true;
         }
         continue;
@@ -151,7 +152,7 @@ function storiesByYear(stories: RawStory[], storySlug: Map<string, string>): {
       bins.push({
         label: c >= 0 ? ord : `${ord} BCE`,
         tip: c >= 0 ? `${ord} century CE (${range})` : `${ord} century BCE (${range})`,
-        count: b.n, film: b.f, era: 'century', items: b.items,
+        count: b.n, film: b.f, lo: c, hi: c + 99, era: 'century', items: b.items,
         ...(c < 0 ? { bc: true } : {}),
       });
     }
@@ -159,13 +160,13 @@ function storiesByYear(stories: RawStory[], storySlug: Map<string, string>): {
   // Decades 1900–1949 (all five, zeros kept). Axis label is the short "00s".."40s".
   for (let d = 1900; d <= 1940; d += 10) {
     const b = take(decade.get(d) ?? mk());
-    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: b.n, film: b.f, era: 'decade', items: b.items });
+    bins.push({ label: `${String(d).slice(-2)}s`, tip: `${d}s (${d}–${d + 9})`, count: b.n, film: b.f, lo: d, hi: d + 9, era: 'decade', items: b.items });
   }
   // Years 1950..maxYear (zeros kept) for a continuous recent axis.
   if (maxYear >= 1950) {
     for (let y = 1950; y <= maxYear; y++) {
       const b = take(year.get(y) ?? mk());
-      bins.push({ label: String(y), tip: String(y), count: b.n, film: b.f, era: 'year', items: b.items });
+      bins.push({ label: String(y), tip: String(y), count: b.n, film: b.f, lo: y, hi: y, era: 'year', items: b.items });
     }
   }
   return { total, unknown, bins };
