@@ -183,6 +183,9 @@
     var bins = data.bins || [];
     // Exact top: the tallest bar reaches 100%.
     var max = bins.reduce(function (m, b) { return Math.max(m, b.count); }, 0) || 1;
+    // Inverted: newest first, so modern times are visible at load (scrollLeft 0) with the
+    // axis running back in time to the right.
+    var view = bins.slice().reverse();
 
     introEl.textContent = data.total.toLocaleString()
       + ' stories by earliest known publication date — per year from 1950,'
@@ -192,182 +195,196 @@
     document.getElementById('chart').style.display = '';
     document.getElementById('xaxis').style.display = '';
 
-    // Cap the plot height so the visualization is never taller than it is wide (mainly on
-    // narrow/tall windows and phones). Done before measuring geometry below so the bars and
-    // zig-zag markers use the final height.
+    // Stable element refs + helpers (everything that doesn't need re-measuring on resize).
     var chartEl = document.getElementById('chart');
-    chartEl.style.maxHeight = chartEl.clientWidth + 'px';
-
-    // ── Y axis: major (labelled) + minor (short) ticks, exact max written at the top. ──
-    var step = niceStep(max);
-    var lead = step / Math.pow(10, Math.floor(Math.log10(step)));   // 1, 2 or 5
-    var minor = step / (Math.round(lead) === 2 ? 4 : 5);            // keeps minors round
     var yax = document.getElementById('yaxis');
-    var yh = '', gh = '';   // gh (gridlines) is inserted into .bars below so it spans the scroll width
-    var pctOf = function (v) { return 100 - (v / max) * 100; };
-    if (minor >= 1) {
-      for (var v = minor; v < max - 1e-6; v += minor) {
-        if (Math.abs(v / step - Math.round(v / step)) < 1e-6) continue; // skip majors
-        yh += '<span class="tick minor" style="top:' + pctOf(v) + '%"><i></i></span>';
-      }
-    }
-    for (var k = 0; k * step <= max + 1e-6; k++) {
-      var mv = k * step;
-      if (mv > 0 && max - mv < step * 0.5) continue; // too close to the max label
-      yh += '<span class="tick major" style="top:' + pctOf(mv) + '%"><b>' + Math.round(mv) + '</b><i></i></span>';
-      gh += '<div class="gline" style="top:' + pctOf(mv) + '%"></div>';
-    }
-    // The max, always written, exactly at the top.
-    yh += '<span class="tick major max" style="top:0"><b>' + Math.round(max) + '</b><i></i></span>';
-    gh += '<div class="gline top" style="top:0"></div>';
-    yax.innerHTML = yh;
-
-    // ── Bars + x-axis labels ──
-    // Inverted: newest first, so modern times are visible at load (scrollLeft 0) with the
-    // axis running back in time to the right.
-    var view = bins.slice().reverse();
-    var barsEl = document.getElementById('bars'), xstrip = document.getElementById('xstrip');
-    var bh = '', labs = [];
-    view.forEach(function (b, i) {
-      var hpct = (b.count / max) * 100;
-      var by = b.by || {};
-      var cls = b.era === 'century' ? (b.bc ? ' century bc' : (b.mill ? ' century mill' : ' century')) : (b.era === 'decade' ? ' decade' : ' year');
-      // Stacked by format: film at the base, the blue formats above (DOM order is
-      // top→bottom, so iterate formats in reverse). flex-grow splits height by count;
-      // zero-count segments are omitted so single-format bars carry no separator.
-      var segs = '';
-      for (var fi = FMTS.length - 1; fi >= 0; fi--) {
-        var fk = FMTS[fi], fc = by[fk] || 0;
-        if (fc > 0) segs += '<div class="seg ' + fk + '" data-fmt="' + fk + '" style="flex:' + fc + '"></div>';
-      }
-      bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
-      var lab = '';
-      if (b.mill) lab = '…'; // collapsed range: a tick + ellipsis
-      else if (b.era === 'century') { if (Math.abs(parseInt(b.label, 10)) % 2 === 1) lab = b.label; } // odd centuries only
-      else if (b.era === 'decade') lab = b.label;
-      else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
-      labs[i] = lab;
-    });
-    barsEl.innerHTML = bh;
-
-    // ── Geometry measured from the laid-out bars (shared by labels, headers, shading). ──
-    var total = barsEl.scrollWidth;
-    var binEls = barsEl.querySelectorAll('.bin'); // in view order
-
-    // The always-present horizontal scrollbar takes ~10px at the bottom of the plot, so the
-    // bar area is shorter than the full chart height. Shrink the y-axis to that area (top-
-    // aligned) so its ticks/"0" line up with the bar baseline rather than the chart bottom.
-    var plotForH = document.getElementById('plot');
-    yax.style.height = plotForH.clientHeight + 'px';
-    yax.style.alignSelf = 'flex-start';
-
-    // X-axis labels positioned at each bar's measured centre, in a strip exactly as wide as
-    // the bars — so labels stay pinned to their bars and scroll the full range (no drift).
-    var xh = '';
-    for (var xi = 0; xi < view.length; xi++) {
-      if (!labs[xi]) continue;
-      var bel = binEls[xi];
-      xh += '<span class="xlab" style="left:' + (bel.offsetLeft + bel.offsetWidth / 2) + 'px">' + labs[xi] + '</span>';
-    }
-    xstrip.style.width = total + 'px';
-    xstrip.innerHTML = xh;
-
-    // Drop any label whose box would overlap the previous kept one (left to right).
-    var labels = xstrip.querySelectorAll('.xlab');
-    var lastRight = -Infinity;
-    for (var s = 0; s < labels.length; s++) {
-      var rc = labels[s].getBoundingClientRect();
-      if (rc.left < lastRight + 5) labels[s].style.visibility = 'hidden';
-      else lastRight = rc.right;
-    }
-
-    // Header: one two-line label (year range + binning mode) per region, ordered by screen
-    // position. The by-year span is broken at the millennium (2000–present / 1950–1999) and
-    // the 1st-millennium bucket is its own region. Ranges + edges come from the bins.
-    var regionDefs = [
-      { key: 'y2', mode: 'by year', gran: 'year', test: function (b) { return b.era === 'year' && b.lo >= 2000; } },
-      { key: 'y1', mode: 'by year', gran: 'year', test: function (b) { return b.era === 'year' && b.lo < 2000; } },
-      { key: 'dec', mode: 'by decade', gran: 'decade', test: function (b) { return b.era === 'decade'; } },
-      { key: 'cen', mode: 'by century', gran: 'century', test: function (b) { return b.era === 'century' && !b.bc && !b.mill; } },
-      { key: 'mil', mode: '1st mill.', gran: 'millennium', test: function (b) { return b.mill; } },
-      { key: 'bce', mode: 'by century', gran: 'century', test: function (b) { return b.era === 'century' && b.bc; } },
-    ];
-    var present = [];
-    regionDefs.forEach(function (rd) {
-      var lo = Infinity, hi = -Infinity, left = Infinity, found = false;
-      view.forEach(function (b, i) {
-        if (!rd.test(b)) return;
-        found = true;
-        if (b.lo < lo) lo = b.lo;
-        if (b.hi > hi) hi = b.hi;
-        var x = binEls[i].offsetLeft; if (x < left) left = x;
-      });
-      if (!found) return;
-      var range = rd.key === 'y2' ? lo + '–present'
-        : rd.key === 'bce' ? Math.abs(lo) + '–' + Math.abs(hi) + ' BCE'
-          : rd.key === 'mil' ? lo + '–' + hi + ' CE'
-            : lo + '–' + hi;
-      present.push({ mode: rd.mode, range: range, left: left, gran: rd.gran });
-    });
-    present.sort(function (a, b) { return a.left - b.left; });
-    var zoneHtml = '';
-    present.forEach(function (p, i) {
-      var L = i === 0 ? 0 : p.left;
-      var R = i === present.length - 1 ? total : present[i + 1].left;
-      zoneHtml += '<div class="zlabel" style="left:' + L + 'px;width:' + (R - L) + 'px">'
-        + '<span class="r">' + p.range + '</span><span class="m">' + p.mode + '</span></div>';
-    });
-
-    // Thick white zig-zag "scale-break" markers wherever the bucket granularity changes
-    // between regions (year→decade→century→millennium→century). Drawn full-height via a tiling
-    // SVG pattern so they're responsive; sit above the panel but below the dotted dividers.
-    var zzX = [];
-    for (var zi = 1; zi < present.length; zi++) {
-      if (present[zi].gran !== present[zi - 1].gran) zzX.push(present[zi].left);
-    }
-    // One continuous polyline sized to the actual plot height (avoids the percentage-height
-    // and tile-seam problems of a pattern): uniform width, full height. ~190px (≈5cm) period,
-    // ±10px amplitude (a triangle wave: centre→right→centre→left per period).
-    var zzA = 10, zzM = 6, zzW = 2 * zzA + 2 * zzM, zzCx = zzA + zzM, zzT = 76;
-    var zzH = barsEl.clientHeight, zzQ = zzT / 4, zzXmap = [zzCx, zzCx + zzA, zzCx, zzCx - zzA];
-    var zzPts = [];
-    for (var zk = 0; zk * zzQ <= zzH + zzT; zk++) zzPts.push(zzXmap[zk % 4] + ',' + (zk * zzQ));
-    var zzPoly = zzPts.join(' ');
-    var zzHtml = '';
-    zzX.forEach(function (x) {
-      zzHtml += '<svg class="zigzag" width="' + zzW + '" height="' + zzH + '" style="left:' + x + 'px">'
-        + '<polyline points="' + zzPoly + '" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
-    });
-
-    // Plot: a single uniform light-grey panel. The former decade/region shade transitions
-    // become white vertical gridlines instead. Cells = one per decade in the by-year region,
-    // one per whole region elsewhere; a boundary sits at the left edge of each cell after the
-    // first.
-    var cellKey = function (b) {
-      return b.era === 'year' ? 'y' + Math.floor(+b.label / 10)
-        : b.era === 'decade' ? 'd' : (b.bc ? 'cb' : 'cc');
-    };
-    var cells = [];
-    view.forEach(function (b, i) {
-      var k = cellKey(b), last = cells[cells.length - 1];
-      if (last && last.key === k) last.end = i;
-      else cells.push({ key: k, start: i, end: i });
-    });
-    var shadeHtml = '<div class="zone-shade" style="left:0;width:' + total + 'px"></div>';
-
-    // White vertical gridline at each former shade boundary (skip those a zig-zag marks).
-    var vlineHtml = '';
-    cells.forEach(function (c, i) {
-      if (i === 0) return;
-      var x = binEls[c.start].offsetLeft;
-      if (!zzX.some(function (m) { return Math.abs(m - x) <= 2; })) {
-        vlineHtml += '<div class="vline" style="left:' + x + 'px"></div>';
-      }
-    });
-    barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + zzHtml + vlineHtml);
+    var barsEl = document.getElementById('bars');
+    var xstrip = document.getElementById('xstrip');
     var zstrip = document.getElementById('zstrip');
-    zstrip.style.width = total + 'px';
-    zstrip.innerHTML = zoneHtml;
+    var plot = document.getElementById('plot');
+    var xa = document.getElementById('xaxis'), zb = document.getElementById('zonebar');
+    var pctOf = function (v) { return 100 - (v / max) * 100; };
+
+    // ── (Re)build everything that depends on measured pixel geometry. Called on load and on
+    // resize/rotation, so the y-axis ticks, zig-zags and square-aspect cap stay correct when
+    // the viewport changes size (the bars themselves are percentage-based and rescale on
+    // their own; these pixel-measured overlays do not). ──
+    function layout() {
+      var keepScroll = plot.scrollLeft;
+
+      // Cap the plot height so the visualization is never taller than it is wide (mainly on
+      // narrow/tall windows and phones). Done before measuring so bars/zig-zags use the final
+      // height.
+      chartEl.style.maxHeight = '';            // clear the previous cap before re-measuring
+      chartEl.style.maxHeight = chartEl.clientWidth + 'px';
+
+      // Y axis: major (labelled) + minor (short) ticks, exact max written at the top.
+      var step = niceStep(max);
+      var lead = step / Math.pow(10, Math.floor(Math.log10(step)));   // 1, 2 or 5
+      var minor = step / (Math.round(lead) === 2 ? 4 : 5);            // keeps minors round
+      var yh = '', gh = '';   // gh (gridlines) is inserted into .bars below so it spans the scroll width
+      if (minor >= 1) {
+        for (var v = minor; v < max - 1e-6; v += minor) {
+          if (Math.abs(v / step - Math.round(v / step)) < 1e-6) continue; // skip majors
+          yh += '<span class="tick minor" style="top:' + pctOf(v) + '%"><i></i></span>';
+        }
+      }
+      for (var k = 0; k * step <= max + 1e-6; k++) {
+        var mv = k * step;
+        if (mv > 0 && max - mv < step * 0.5) continue; // too close to the max label
+        yh += '<span class="tick major" style="top:' + pctOf(mv) + '%"><b>' + Math.round(mv) + '</b><i></i></span>';
+        gh += '<div class="gline" style="top:' + pctOf(mv) + '%"></div>';
+      }
+      // The max, always written, exactly at the top.
+      yh += '<span class="tick major max" style="top:0"><b>' + Math.round(max) + '</b><i></i></span>';
+      gh += '<div class="gline top" style="top:0"></div>';
+      yax.innerHTML = yh;
+
+      // Bars + x-axis labels.
+      var bh = '', labs = [];
+      view.forEach(function (b, i) {
+        var hpct = (b.count / max) * 100;
+        var by = b.by || {};
+        var cls = b.era === 'century' ? (b.bc ? ' century bc' : (b.mill ? ' century mill' : ' century')) : (b.era === 'decade' ? ' decade' : ' year');
+        // Stacked by format: film at the base, the blue formats above (DOM order is
+        // top→bottom, so iterate formats in reverse). flex-grow splits height by count;
+        // zero-count segments are omitted so single-format bars carry no separator.
+        var segs = '';
+        for (var fi = FMTS.length - 1; fi >= 0; fi--) {
+          var fk = FMTS[fi], fc = by[fk] || 0;
+          if (fc > 0) segs += '<div class="seg ' + fk + '" data-fmt="' + fk + '" style="flex:' + fc + '"></div>';
+        }
+        bh += '<div class="bin' + cls + '" data-i="' + i + '"><div class="bar" style="height:' + hpct + '%">' + segs + '</div></div>';
+        var lab = '';
+        if (b.mill) lab = '…'; // collapsed range: a tick + ellipsis
+        else if (b.era === 'century') { if (Math.abs(parseInt(b.label, 10)) % 2 === 1) lab = b.label; } // odd centuries only
+        else if (b.era === 'decade') lab = b.label;
+        else if (+b.label % 10 === 0) lab = b.label; // decade marks on the yearly axis
+        labs[i] = lab;
+      });
+      barsEl.innerHTML = bh;
+
+      // Geometry measured from the laid-out bars (shared by labels, headers, shading).
+      var total = barsEl.scrollWidth;
+      var binEls = barsEl.querySelectorAll('.bin'); // in view order
+
+      // The always-present horizontal scrollbar takes ~10px at the bottom of the plot, so the
+      // bar area is shorter than the full chart height. Shrink the y-axis to that area (top-
+      // aligned) so its ticks/"0" line up with the bar baseline rather than the chart bottom.
+      yax.style.height = plot.clientHeight + 'px';
+      yax.style.alignSelf = 'flex-start';
+
+      // X-axis labels positioned at each bar's measured centre, in a strip exactly as wide as
+      // the bars — so labels stay pinned to their bars and scroll the full range (no drift).
+      var xh = '';
+      for (var xi = 0; xi < view.length; xi++) {
+        if (!labs[xi]) continue;
+        var bel = binEls[xi];
+        xh += '<span class="xlab" style="left:' + (bel.offsetLeft + bel.offsetWidth / 2) + 'px">' + labs[xi] + '</span>';
+      }
+      xstrip.style.width = total + 'px';
+      xstrip.innerHTML = xh;
+
+      // Drop any label whose box would overlap the previous kept one (left to right).
+      var labels = xstrip.querySelectorAll('.xlab');
+      var lastRight = -Infinity;
+      for (var s = 0; s < labels.length; s++) {
+        var rc = labels[s].getBoundingClientRect();
+        if (rc.left < lastRight + 5) labels[s].style.visibility = 'hidden';
+        else lastRight = rc.right;
+      }
+
+      // Header: one two-line label (year range + binning mode) per region, ordered by screen
+      // position. The by-year span is broken at the millennium (2000–present / 1950–1999) and
+      // the 1st-millennium bucket is its own region. Ranges + edges come from the bins.
+      var regionDefs = [
+        { key: 'y2', mode: 'by year', gran: 'year', test: function (b) { return b.era === 'year' && b.lo >= 2000; } },
+        { key: 'y1', mode: 'by year', gran: 'year', test: function (b) { return b.era === 'year' && b.lo < 2000; } },
+        { key: 'dec', mode: 'by decade', gran: 'decade', test: function (b) { return b.era === 'decade'; } },
+        { key: 'cen', mode: 'by century', gran: 'century', test: function (b) { return b.era === 'century' && !b.bc && !b.mill; } },
+        { key: 'mil', mode: '1st mill.', gran: 'millennium', test: function (b) { return b.mill; } },
+        { key: 'bce', mode: 'by century', gran: 'century', test: function (b) { return b.era === 'century' && b.bc; } },
+      ];
+      var present = [];
+      regionDefs.forEach(function (rd) {
+        var lo = Infinity, hi = -Infinity, left = Infinity, found = false;
+        view.forEach(function (b, i) {
+          if (!rd.test(b)) return;
+          found = true;
+          if (b.lo < lo) lo = b.lo;
+          if (b.hi > hi) hi = b.hi;
+          var x = binEls[i].offsetLeft; if (x < left) left = x;
+        });
+        if (!found) return;
+        var range = rd.key === 'y2' ? lo + '–present'
+          : rd.key === 'bce' ? Math.abs(lo) + '–' + Math.abs(hi) + ' BCE'
+            : rd.key === 'mil' ? lo + '–' + hi + ' CE'
+              : lo + '–' + hi;
+        present.push({ mode: rd.mode, range: range, left: left, gran: rd.gran });
+      });
+      present.sort(function (a, b) { return a.left - b.left; });
+      var zoneHtml = '';
+      present.forEach(function (p, i) {
+        var L = i === 0 ? 0 : p.left;
+        var R = i === present.length - 1 ? total : present[i + 1].left;
+        zoneHtml += '<div class="zlabel" style="left:' + L + 'px;width:' + (R - L) + 'px">'
+          + '<span class="r">' + p.range + '</span><span class="m">' + p.mode + '</span></div>';
+      });
+
+      // Thick white zig-zag "scale-break" markers wherever the bucket granularity changes
+      // between regions (year→decade→century→millennium→century). One continuous polyline
+      // sized to the actual plot height (avoids the percentage-height and tile-seam problems
+      // of a pattern): uniform width, full height. ~2cm period, ±10px amplitude (a triangle
+      // wave: centre→right→centre→left per period).
+      var zzX = [];
+      for (var zi = 1; zi < present.length; zi++) {
+        if (present[zi].gran !== present[zi - 1].gran) zzX.push(present[zi].left);
+      }
+      var zzA = 10, zzM = 6, zzW = 2 * zzA + 2 * zzM, zzCx = zzA + zzM, zzT = 76;
+      var zzH = barsEl.clientHeight, zzQ = zzT / 4, zzXmap = [zzCx, zzCx + zzA, zzCx, zzCx - zzA];
+      var zzPts = [];
+      for (var zk = 0; zk * zzQ <= zzH + zzT; zk++) zzPts.push(zzXmap[zk % 4] + ',' + (zk * zzQ));
+      var zzPoly = zzPts.join(' ');
+      var zzHtml = '';
+      zzX.forEach(function (x) {
+        zzHtml += '<svg class="zigzag" width="' + zzW + '" height="' + zzH + '" style="left:' + x + 'px">'
+          + '<polyline points="' + zzPoly + '" fill="none" stroke="#fff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+      });
+
+      // Plot: a single uniform light-grey panel. The former decade/region shade transitions
+      // become white vertical gridlines instead. Cells = one per decade in the by-year region,
+      // one per whole region elsewhere; a boundary sits at the left edge of each cell after the
+      // first.
+      var cellKey = function (b) {
+        return b.era === 'year' ? 'y' + Math.floor(+b.label / 10)
+          : b.era === 'decade' ? 'd' : (b.bc ? 'cb' : 'cc');
+      };
+      var cells = [];
+      view.forEach(function (b, i) {
+        var k = cellKey(b), last = cells[cells.length - 1];
+        if (last && last.key === k) last.end = i;
+        else cells.push({ key: k, start: i, end: i });
+      });
+      var shadeHtml = '<div class="zone-shade" style="left:0;width:' + total + 'px"></div>';
+
+      // White vertical gridline at each former shade boundary (skip those a zig-zag marks).
+      var vlineHtml = '';
+      cells.forEach(function (c, i) {
+        if (i === 0) return;
+        var x = binEls[c.start].offsetLeft;
+        if (!zzX.some(function (m) { return Math.abs(m - x) <= 2; })) {
+          vlineHtml += '<div class="vline" style="left:' + x + 'px"></div>';
+        }
+      });
+      barsEl.insertAdjacentHTML('afterbegin', '<div class="grid" style="width:' + total + 'px">' + gh + '</div>' + shadeHtml + zzHtml + vlineHtml);
+      zstrip.style.width = total + 'px';
+      zstrip.innerHTML = zoneHtml;
+
+      // Rebuilding the bars reset the scroll; restore it and re-sync the strips.
+      plot.scrollLeft = keepScroll;
+      xa.scrollLeft = keepScroll;
+      zb.scrollLeft = keepScroll;
+    }
 
     // ── Popup + scroll dismissal ──
     var pop = document.getElementById('pop'), popTitle = document.getElementById('pop-title'), popList = document.getElementById('pop-list');
@@ -416,7 +433,6 @@
     // Desktop panning: the mouse wheel scrolls the timeline horizontally, and you can
     // click-drag the background to pan. Touch devices already pan natively, so those pointers
     // are left to the browser.
-    var plot = document.getElementById('plot');
     var dragging = false, dragMoved = false, dragFromX = 0, dragFromScroll = 0;
     plot.addEventListener('wheel', function (e) {
       if (!e.deltaY) return;
@@ -449,15 +465,24 @@
     document.getElementById('pop-close').addEventListener('click', hidePop);
     document.addEventListener('click', hidePop);          // background tap
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hidePop(); });
-    window.addEventListener('resize', hidePop);
     window.addEventListener('scroll', hidePop, { passive: true });
     window.addEventListener('touchmove', function (e) {   // chart/page scroll, not popup-internal
       if (!(e.target.closest && e.target.closest('#pop'))) hidePop();
     }, { passive: true });
 
     // ── Scroll sync (drives the strips) + dismiss the popup on chart scroll. ──
-    var xa = document.getElementById('xaxis'), zb = document.getElementById('zonebar');
     plot.addEventListener('scroll', function () { xa.scrollLeft = plot.scrollLeft; zb.scrollLeft = plot.scrollLeft; hidePop(); });
+
+    // Re-run the pixel-measured layout on resize/rotation (debounced), so the y-axis ticks,
+    // zig-zags and square-aspect cap track the new viewport size. Dismiss the popup too.
+    var relayoutTimer = null;
+    window.addEventListener('resize', function () {
+      hidePop();
+      clearTimeout(relayoutTimer);
+      relayoutTimer = setTimeout(layout, 150);
+    });
+
+    layout();   // initial render
   }
 })();
 </script>
