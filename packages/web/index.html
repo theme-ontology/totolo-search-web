@@ -99,9 +99,35 @@
       font-size: .82rem;
       color: #495057;
     }
-    .type-filter { display: flex; gap: .6rem; flex-wrap: wrap; }
-    .type-filter label { display: flex; align-items: center; gap: .25rem; cursor: pointer; }
-    .type-filter input[type=radio] { accent-color: #495057; }
+    /* Result-type filter as a row of tap-style pills. The radio inputs stay (behaviour +
+       accessibility) but are visually hidden; the selected pill gets a solid dark fill so
+       it reads clearly as the active search type. */
+    .type-filter { display: inline-flex; flex-wrap: wrap; gap: .35rem; }
+    .type-option { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .type-option input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; pointer-events: none; }
+    .type-option span {
+      display: inline-block;
+      padding: .3rem .7rem;
+      border: 1px solid #ced4da;
+      border-radius: 999px;
+      background: #fff;
+      color: #495057;
+      font-size: .8rem;
+      font-weight: 500;
+      line-height: 1.2;
+      user-select: none;
+      transition: background .12s, color .12s, border-color .12s, box-shadow .12s;
+    }
+    .type-option:hover span { border-color: #adb5bd; background: #f1f3f5; }
+    .type-option:active span { transform: translateY(.5px); }
+    .type-option input:checked + span {
+      background: #495057;
+      border-color: #495057;
+      color: #fff;
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+    }
+    .type-option input:focus-visible + span { outline: 2px solid #7048e8; outline-offset: 2px; }
 
     .right-options {
       display: flex;
@@ -372,11 +398,11 @@
         <button id="search-btn" disabled>Search</button>
       </div>
       <div class="search-options">
-        <div class="type-filter">
-          <label><input type="radio" name="doc-type" value="all" checked> All</label>
-          <label><input type="radio" name="doc-type" value="theme"> Themes</label>
-          <label><input type="radio" name="doc-type" value="story"> Stories</label>
-          <label><input type="radio" name="doc-type" value="story-theme"> Annotations</label>
+        <div class="type-filter" role="radiogroup" aria-label="Result type">
+          <label class="type-option"><input type="radio" name="doc-type" value="all" checked><span>All</span></label>
+          <label class="type-option"><input type="radio" name="doc-type" value="theme"><span>Themes</span></label>
+          <label class="type-option"><input type="radio" name="doc-type" value="story"><span>Stories</span></label>
+          <label class="type-option"><input type="radio" name="doc-type" value="story-theme"><span>Annotations</span></label>
         </div>
         <div class="right-options">
           <label class="regex-label" title="Regular-expression search. Smart-case: all-lowercase matches any case; include an uppercase letter to match case exactly."><input type="checkbox" id="regex-mode" disabled> Regex</label>

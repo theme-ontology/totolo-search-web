@@ -382,6 +382,18 @@ async function main() {
     }
   });
 
+  // Selecting the field selects its current text, so a fresh query types straight over
+  // the old one; clicking again in the already-focused field places the caret to append.
+  let selectAllOnFocus = false;
+  queryEl.addEventListener('mousedown', () => {
+    selectAllOnFocus = document.activeElement !== queryEl;
+  });
+  queryEl.addEventListener('focus', () => queryEl.select());
+  queryEl.addEventListener('mouseup', (e: MouseEvent) => {
+    // Keep the focus-time selection on the first click; let later clicks position the caret.
+    if (selectAllOnFocus) { e.preventDefault(); selectAllOnFocus = false; }
+  });
+
   queryEl.addEventListener('input', () => {
     currentQuery = queryEl.value;
     runSearch();
