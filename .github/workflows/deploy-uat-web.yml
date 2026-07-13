@@ -1,0 +1,84 @@
+name: Deploy UAT web app (fast, SPA only)
+
+# Fast lane for search-SPA changes (packages/web/**). It rebuilds only the Vite app and
+# uploads it to the bucket's /search/ subtree. Skips everything the SPA doesn't depend on
+# -- corpus generation (Python), the MiniSearch index, title/annotation embeddings, and the
+# shared /models/ prefix -- so a UI tweak deploys in ~1-2 min instead of the full ~8-20.
+#
+# The index artifacts (minisearch.json, corpus.json, embeddings*.bin, latest.json), the
+# detail pages (owned by pages.ts), and /models/ are untouched: the SPA fetches corpus +
+# models at runtime, so a new bundle needs none of them rebuilt.
+#
+# Auto-runs when only packages/web/** changes on main, and can be dispatched manually.
+# A push that also touches packages/core or packages/indexer still goes through the full
+# deploy-uat.yml (those genuinely change the index), which rebuilds the SPA too.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['packages/web/**']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-uat-web
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: eu-west-1
+  AWS_ROLE_ARN: arn:aws:iam::777087578287:role/totolo-search-web-uat-deploy
+  S3_BUCKET: totolo-web-uat
+  CLOUDFRONT_DISTRIBUTION_ID: ENYYNF7Z2NR6D
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # always build the latest SPA, not the triggering commit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      # core exports its TS source, so the web build resolves the workspace dep without a
+      # separate core build -- identical to the "Build search app" step in deploy-uat.yml.
+      - name: Build search app (production, base /search/)
+        working-directory: packages/web
+        env:
+          APP_BASE: /search/
+          VITE_LATEST_JSON_URL: /latest.json
+          VITE_MODELS_URL: /models/
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload SPA to /search/
+        run: |
+          # Same cache policy + reuse-safe semantics as deploy-uat.yml's search subtree:
+          # scoped --delete drops stale hashed assets, --size-only skips unchanged files.
+          # dist holds no models/ (no fetch-models step), so nothing shared is touched; the
+          # sync target is the /search/ prefix, so /models/ and the index artifacts at the
+          # root are out of reach by construction.
+          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=3600"
+          aws s3 sync packages/web/dist/ "s3://$BUCKET/search/" --delete --size-only --cache-control "$CC"
+          # search/index.html keeps the same byte length when only the hashed bundle changes,
+          # so --size-only would skip it and leave it pointing at the just-deleted old bundle
+          # (404). Always refresh it.
+          aws s3 cp packages/web/dist/index.html "s3://$BUCKET/search/index.html" --cache-control "$CC"
+
+      - name: Invalidate /search/
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/search/*"
