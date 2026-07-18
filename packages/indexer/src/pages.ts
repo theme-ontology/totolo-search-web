@@ -413,6 +413,20 @@ tbody tr { content-visibility: auto; contain-intrinsic-size: auto 3.5rem; }
 /* Component-stories table is 2 columns (Story | Date), not the 3-col level tables. */
 table.cols2 th:first-child, table.cols2 td:first-child { width: auto; }
 table.cols2 th:nth-child(2), table.cols2 td:nth-child(2) { width: 7em; }
+
+/* Toggle-to-table blocks (sidebar ancestor / child-theme lists). The toggle sits at the top-right
+   of the list heading; clicking it swaps the inline list for a table (handled in PAGES_JS). */
+.tl-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+.tl-head h2 { margin-bottom: .2rem; }
+.tl-toggle { flex: none; background: none; border: 0; padding: 0; cursor: pointer; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #7048e8; }
+.tl-toggle:hover { text-decoration: underline; }
+.tl-table { margin-top: .15rem; overflow-x: auto; }
+/* These live in the narrow aside, so size columns to content (auto) rather than the global fixed
+   layout, and let the description take the remaining width. */
+.tl-table table { table-layout: auto; }
+.tl-anc th:first-child, .tl-anc td:first-child, .tl-child th:first-child, .tl-child td:first-child { width: 38%; }
+.tl-anc th:nth-child(2), .tl-anc td.tl-lvlcell { width: 3em; text-align: center; color: #6c757d; font-variant-numeric: tabular-nums; }
+.tl-child th:nth-child(2), .tl-child td:nth-child(2) { width: auto; }
 `.trim();
 
 // Shared, cacheable script for the doc pages: clicking "Show all" fetches the table's
@@ -426,6 +440,18 @@ document.addEventListener('click', function (e) {
     var name = copy.getAttribute('data-copy') || '';
     if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(name).then(done, done); }
     else { done(); }
+    return;
+  }
+  var tlBtn = t && t.closest ? t.closest('.tl-toggle') : null;
+  if (tlBtn) {
+    var box = tlBtn.closest('[data-tl]');
+    if (box) {
+      var showTable = tlBtn.getAttribute('aria-pressed') !== 'true';
+      tlBtn.setAttribute('aria-pressed', showTable ? 'true' : 'false');
+      tlBtn.textContent = showTable ? 'List' : 'Table';
+      var lst = box.querySelector('.tl-list'); if (lst) lst.hidden = showTable;
+      var tb = box.querySelector('.tl-table'); if (tb) tb.hidden = !showTable;
+    }
     return;
   }
   var btn = t && t.closest ? t.closest('.expand-btn') : null;
@@ -555,6 +581,25 @@ function tableSection(
 ${inline}
 </tbody></table>${btn}</section>`;
   return { html, overflow };
+}
+
+// A sidebar list that can flip to a table. Renders the inline list (default) plus a hidden
+// table with the given headers/rows and a "Table"/"List" toggle at the top; the swap is handled
+// by the shared PAGES_JS (.tl-toggle). Returns '' when there are no rows.
+function toggleBlock(
+  headingText: string,
+  listInnerHtml: string,
+  tableClass: string,
+  headers: string[],
+  rows: string[],
+): string {
+  if (rows.length === 0) return '';
+  const thead = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`;
+  return `<div class="tl" data-tl>
+<div class="tl-head"><h2>${headingText}</h2><button type="button" class="tl-toggle" aria-pressed="false">Table</button></div>
+<div class="tl-list">${listInnerHtml}</div>
+<div class="tl-table" hidden><table class="${tableClass}">${thead}<tbody>${rows.join('\n')}</tbody></table></div>
+</div>`;
 }
 
 // Terse "N total · a choice · b major · c minor" summary (omits zero levels).
@@ -820,8 +865,10 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
   }
   const childrenByTheme = new Map<string, string[]>();
   const parentsByTheme = new Map<string, string[]>();
+  const descByTheme = new Map<string, string>();
   for (const t of raw.themes ?? []) {
     parentsByTheme.set(t.name, t.parents ?? []);
+    descByTheme.set(t.name, t.description ?? '');
     for (const p of t.parents ?? []) {
       let list = childrenByTheme.get(p);
       if (!list) { list = []; childrenByTheme.set(p, list); }
@@ -995,20 +1042,33 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
     }
 
     // Sidebar: ancestors (direct parents bold, then ancestors by topological level),
-    // child themes, and references.
+    // child themes, and references. The ancestor and child lists are each inline by default
+    // with a toggle to a table (see toggleBlock): ancestors -> Theme/Level/Description (level =
+    // topological distance up, 1 = direct parent); children -> Theme/Description (all one level).
     const directParents = new Set(t.parents ?? []);
     const levels = ancestorLevels(t.name).filter(lvl => lvl.length > 0);
-    let ancestorsHtml = '';
+    const bold = (n: string) => (directParents.has(n) ? `<strong>${themeLink(n)}</strong>` : themeLink(n));
+    let ancestorsBlock = '';
     if (levels.length > 0) {
-      const parts = levels.map(lvl =>
-        lvl.map(n => (directParents.has(n) ? `<strong>${themeLink(n)}</strong>` : themeLink(n))).join(', '),
-      );
-      ancestorsHtml = `<h2>Ancestors</h2><p class="ancestors">${parts.join(' <span class="lvl-sep">&rsaquo;</span> ')}</p>`;
+      const listInner = `<p class="ancestors">${levels
+        .map(lvl => lvl.map(bold).join(', '))
+        .join(' <span class="lvl-sep">&rsaquo;</span> ')}</p>`;
+      const rows: string[] = [];
+      levels.forEach((lvl, li) => {
+        for (const n of lvl) rows.push(`<tr><td>${bold(n)}</td><td class="tl-lvlcell">${li + 1}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
+      });
+      ancestorsBlock = toggleBlock('Ancestors', listInner, 'tl-anc', ['Theme', 'Level', 'Description'], rows);
     }
     const children = (childrenByTheme.get(t.name) ?? []).sort();
+    let childrenBlock = '';
+    if (children.length > 0) {
+      const listInner = `<p class="inline-list">${children.map(themeLink).join(', ')}</p>`;
+      const rows = children.map(n => `<tr><td>${themeLink(n)}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
+      childrenBlock = toggleBlock(`Child themes (${children.length})`, listInner, 'tl-child', ['Theme', 'Description'], rows);
+    }
     const aside: string[] = [
-      ancestorsHtml,
-      inlineList(`Child themes (${children.length})`, children.map(themeLink)),
+      ancestorsBlock,
+      childrenBlock,
       refSection(t.references),
     ];
 
