@@ -415,17 +415,24 @@ table.cols2 th:first-child, table.cols2 td:first-child { width: auto; }
 table.cols2 th:nth-child(2), table.cols2 td:nth-child(2) { width: 7em; }
 
 /* Toggle-to-table blocks (sidebar ancestor / child-theme lists). The toggle sits at the top-right
-   of the list heading; clicking it swaps the inline list for a table (handled in PAGES_JS). */
+   of the list heading; clicking it swaps the inline list for a compact table (handled in PAGES_JS). */
+.tl + .tl { margin-top: 1.1rem; }                 /* restore the gap between the ancestor + child blocks */
 .tl-head { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
-.tl-head h2 { margin-bottom: .2rem; }
+.tl-head h2 { margin: 0 0 .2rem; }
 .tl-toggle { flex: none; background: none; border: 0; padding: 0; cursor: pointer; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #7048e8; }
 .tl-toggle:hover { text-decoration: underline; }
 .tl-table { margin-top: .15rem; overflow-x: auto; }
-/* These live in the narrow aside, so size columns to content (auto) rather than the global fixed
-   layout, and let the description take the remaining width. */
-.tl-table table { table-layout: auto; }
-.tl-anc th:first-child, .tl-anc td:first-child, .tl-child th:first-child, .tl-child td:first-child { width: 38%; }
-.tl-anc th:nth-child(2), .tl-anc td.tl-lvlcell { width: 3em; text-align: center; color: #6c757d; font-variant-numeric: tabular-nums; }
+/* Dense: content-sized columns (not the global fixed layout), tight padding + type, in the narrow aside. */
+.tl-table table { table-layout: auto; font-size: .78rem; }
+.tl-table th { padding: .16rem .3rem; }
+.tl-table td { padding: .16rem .3rem; line-height: 1.3; }
+.tl-lvlhdr { color: #868e96; font-weight: 400; }
+/* Ancestors: circled level (col 1, narrow) · theme · description. */
+.tl-anc th:first-child, .tl-anc td.tl-lvlcell { width: 1.7em; text-align: center; padding-left: 0; padding-right: .2rem; }
+.tl-anc td.tl-lvlcell { color: #7048e8; font-size: 1.02em; line-height: 1; }
+.tl-anc th:nth-child(2), .tl-anc td:nth-child(2) { width: 34%; }
+/* Children: theme · description (no level col). */
+.tl-child th:first-child, .tl-child td:first-child { width: 38%; }
 .tl-child th:nth-child(2), .tl-child td:nth-child(2) { width: auto; }
 `.trim();
 
@@ -600,6 +607,13 @@ function toggleBlock(
 <div class="tl-list">${listInnerHtml}</div>
 <div class="tl-table" hidden><table class="${tableClass}">${thead}<tbody>${rows.join('\n')}</tbody></table></div>
 </div>`;
+}
+
+// Level as a circled digit: ①..⑨ then ⑩..⑳; plain number beyond (hierarchies rarely go that deep).
+function circledLevel(n: number): string {
+  if (n >= 1 && n <= 9) return String.fromCodePoint(0x2460 + n - 1);
+  if (n >= 10 && n <= 20) return String.fromCodePoint(0x2469 + n - 10);
+  return String(n);
 }
 
 // Terse "N total · a choice · b major · c minor" summary (omits zero levels).
@@ -1055,9 +1069,10 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
         .join(' <span class="lvl-sep">&rsaquo;</span> ')}</p>`;
       const rows: string[] = [];
       levels.forEach((lvl, li) => {
-        for (const n of lvl) rows.push(`<tr><td>${bold(n)}</td><td class="tl-lvlcell">${li + 1}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
+        for (const n of lvl) rows.push(`<tr><td class="tl-lvlcell">${circledLevel(li + 1)}</td><td>${bold(n)}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
       });
-      ancestorsBlock = toggleBlock('Ancestors', listInner, 'tl-anc', ['Theme', 'Level', 'Description'], rows);
+      const lvlHdr = '<span class="tl-lvlhdr" title="Levels up from this theme (1 = direct parent)">&uarr;</span>';
+      ancestorsBlock = toggleBlock('Ancestors', listInner, 'tl-anc', [lvlHdr, 'Theme', 'Description'], rows);
     }
     const children = (childrenByTheme.get(t.name) ?? []).sort();
     let childrenBlock = '';
