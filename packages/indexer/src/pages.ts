@@ -427,9 +427,10 @@ table.cols2 th:nth-child(2), table.cols2 td:nth-child(2) { width: 7em; }
 .tl-table th { padding: .16rem .3rem; }
 .tl-table td { padding: .16rem .3rem; line-height: 1.3; }
 .tl-lvlhdr { color: #868e96; font-weight: 400; }
-/* Ancestors: circled level (col 1, narrow) · theme · description. */
-.tl-anc th:first-child, .tl-anc td.tl-lvlcell { width: 1.7em; text-align: center; padding-left: 0; padding-right: .2rem; }
-.tl-anc td.tl-lvlcell { color: #868e96; font-size: 1.02em; line-height: 1; }
+/* Ancestors: level badge (col 1, narrow) · theme · description. The level is a plain digit inside a
+   CSS-drawn circle — circled-digit Unicode glyphs (①②③) render off-baseline in many fonts. */
+.tl-anc th:first-child, .tl-anc td.tl-lvlcell { width: 2rem; text-align: center; padding-left: 0; padding-right: .2rem; }
+.tl-lvlbadge { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; border: 1px solid #ced4da; border-radius: 50%; font-size: .66rem; line-height: 1; color: #868e96; vertical-align: top; }
 .tl-anc th:nth-child(2), .tl-anc td:nth-child(2) { width: 28%; }
 /* Children: theme · description (no level col). */
 .tl-child th:first-child, .tl-child td:first-child { width: 30%; }
@@ -607,13 +608,6 @@ function toggleBlock(
 <div class="tl-list">${listInnerHtml}</div>
 <div class="tl-table" hidden><table class="${tableClass}">${thead}<tbody>${rows.join('\n')}</tbody></table></div>
 </div>`;
-}
-
-// Level as a circled digit: ①..⑨ then ⑩..⑳; plain number beyond (hierarchies rarely go that deep).
-function circledLevel(n: number): string {
-  if (n >= 1 && n <= 9) return String.fromCodePoint(0x2460 + n - 1);
-  if (n >= 10 && n <= 20) return String.fromCodePoint(0x2469 + n - 10);
-  return String(n);
 }
 
 // Terse "N total · a choice · b major · c minor" summary (omits zero levels).
@@ -1069,7 +1063,7 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
         .join(' <span class="lvl-sep">&rsaquo;</span> ')}</p>`;
       const rows: string[] = [];
       levels.forEach((lvl, li) => {
-        for (const n of lvl) rows.push(`<tr><td class="tl-lvlcell">${circledLevel(li + 1)}</td><td>${bold(n)}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
+        for (const n of lvl) rows.push(`<tr><td class="tl-lvlcell"><span class="tl-lvlbadge">${li + 1}</span></td><td>${bold(n)}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
       });
       const lvlHdr = '<span class="tl-lvlhdr" title="Levels up from this theme (1 = direct parent)">&uarr;</span>';
       ancestorsBlock = toggleBlock('Ancestors', listInner, 'tl-anc', [lvlHdr, 'Theme', 'Description'], rows);
