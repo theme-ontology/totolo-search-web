@@ -430,7 +430,7 @@ table.cols2 th:nth-child(2), table.cols2 td:nth-child(2) { width: 7em; }
 /* Ancestors: level badge (col 1, narrow) · theme · description. The level is a plain digit inside a
    CSS-drawn circle — circled-digit Unicode glyphs (①②③) render off-baseline in many fonts. */
 .tl-anc th:first-child, .tl-anc td.tl-lvlcell { width: 2rem; text-align: center; padding-left: 0; padding-right: .2rem; }
-.tl-lvlbadge { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; border: 1px solid #ced4da; border-radius: 50%; font-size: .66rem; line-height: 1; color: #868e96; vertical-align: top; }
+.tl-lvlbadge { display: inline-flex; align-items: center; justify-content: center; width: 1.05rem; height: 1.05rem; border: 1.5px solid #adb5bd; border-radius: 50%; font-size: .68rem; line-height: 1; color: #868e96; vertical-align: top; }
 .tl-anc th:nth-child(2), .tl-anc td:nth-child(2) { width: 28%; }
 /* Children: theme · description (no level col). */
 .tl-child th:first-child, .tl-child td:first-child { width: 30%; }
