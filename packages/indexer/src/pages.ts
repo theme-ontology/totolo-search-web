@@ -429,10 +429,10 @@ table.cols2 th:nth-child(2), table.cols2 td:nth-child(2) { width: 7em; }
 .tl-lvlhdr { color: #868e96; font-weight: 400; }
 /* Ancestors: circled level (col 1, narrow) · theme · description. */
 .tl-anc th:first-child, .tl-anc td.tl-lvlcell { width: 1.7em; text-align: center; padding-left: 0; padding-right: .2rem; }
-.tl-anc td.tl-lvlcell { color: #7048e8; font-size: 1.02em; line-height: 1; }
-.tl-anc th:nth-child(2), .tl-anc td:nth-child(2) { width: 34%; }
+.tl-anc td.tl-lvlcell { color: #868e96; font-size: 1.02em; line-height: 1; }
+.tl-anc th:nth-child(2), .tl-anc td:nth-child(2) { width: 28%; }
 /* Children: theme · description (no level col). */
-.tl-child th:first-child, .tl-child td:first-child { width: 38%; }
+.tl-child th:first-child, .tl-child td:first-child { width: 30%; }
 .tl-child th:nth-child(2), .tl-child td:nth-child(2) { width: auto; }
 `.trim();
 
