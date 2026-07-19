@@ -457,13 +457,34 @@ document.addEventListener('click', function (e) {
   var tlBtn = t && t.closest ? t.closest('.tl-toggle') : null;
   if (tlBtn) {
     var box = tlBtn.closest('[data-tl]');
-    if (box) {
-      var showTable = tlBtn.getAttribute('aria-pressed') !== 'true';
+    if (!box) return;
+    var showTable = tlBtn.getAttribute('aria-pressed') !== 'true';
+    var lst = box.querySelector('.tl-list');
+    var tb = box.querySelector('.tl-table');
+    var body = box.querySelector('.tl-table tbody');
+    var flip = function () {
       tlBtn.setAttribute('aria-pressed', showTable ? 'true' : 'false');
       tlBtn.textContent = showTable ? 'List' : 'Table';
-      var lst = box.querySelector('.tl-list'); if (lst) lst.hidden = showTable;
-      var tb = box.querySelector('.tl-table'); if (tb) tb.hidden = !showTable;
+      if (lst) lst.hidden = showTable;
+      if (tb) tb.hidden = !showTable;
+    };
+    var src = tlBtn.getAttribute('data-src');
+    // On first open, lazy-load the row cells (pre-rendered HTML) from the sibling <slug>.json so the
+    // descriptions never ship in the initial page; then just show/hide on later toggles.
+    if (showTable && src && body && !body.getAttribute('data-loaded')) {
+      var key = tlBtn.getAttribute('data-key');
+      tlBtn.disabled = true; tlBtn.textContent = 'Loading\\u2026';
+      fetch(src)
+        .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
+        .then(function (data) {
+          body.insertAdjacentHTML('beforeend', (data && data[key]) || '');
+          body.setAttribute('data-loaded', '1');
+          tlBtn.disabled = false; flip();
+        })
+        .catch(function () { tlBtn.disabled = false; tlBtn.textContent = 'Table'; });
+      return;
     }
+    flip();
     return;
   }
   var btn = t && t.closest ? t.closest('.expand-btn') : null;
@@ -595,23 +616,28 @@ ${inline}
   return { html, overflow };
 }
 
-// A sidebar list that can flip to a table. Renders the inline list (default) plus a hidden
-// table with the given headers/rows and a "Table"/"List" toggle at the top; the swap is handled
-// by the shared PAGES_JS (.tl-toggle). Returns '' when there are no rows.
+// A sidebar list that can flip to a table. Renders the inline list (default) plus an EMPTY table
+// (headers only) with a "Table"/"List" toggle. The per-row cells (which carry descriptions) are NOT
+// inlined -- the toggle lazy-loads them, as pre-rendered HTML, from the sibling <slug>.json on first
+// open (see PAGES_JS .tl-toggle), so a hub theme's page stays lean until someone opens the table.
+// Returns the block HTML plus the rows HTML for the caller to store in that JSON under `key`.
 function toggleBlock(
   headingText: string,
   listInnerHtml: string,
   tableClass: string,
   headers: string[],
   rows: string[],
-): string {
-  if (rows.length === 0) return '';
+  jsonName: string,
+  key: string,
+): { html: string; rowsHtml: string } {
+  if (rows.length === 0) return { html: '', rowsHtml: '' };
   const thead = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`;
-  return `<div class="tl" data-tl>
-<div class="tl-head"><h2>${headingText}</h2><button type="button" class="tl-toggle" aria-pressed="false">Table</button></div>
+  const html = `<div class="tl" data-tl>
+<div class="tl-head"><h2>${headingText}</h2><button type="button" class="tl-toggle" aria-pressed="false" data-src="${jsonName}" data-key="${key}">Table</button></div>
 <div class="tl-list">${listInnerHtml}</div>
-<div class="tl-table" hidden><table class="${tableClass}">${thead}<tbody>${rows.join('\n')}</tbody></table></div>
+<div class="tl-table" hidden><table class="${tableClass}">${thead}<tbody></tbody></table></div>
 </div>`;
+  return { html, rowsHtml: rows.join('\n') };
 }
 
 // Terse "N total · a choice · b major · c minor" summary (omits zero levels).
@@ -1070,14 +1096,18 @@ export async function writePages(rawPath: string, docs: Document[], outDir: stri
         for (const n of lvl) rows.push(`<tr><td class="tl-lvlcell"><span class="tl-lvlbadge">${li + 1}</span></td><td>${bold(n)}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
       });
       const lvlHdr = '<span class="tl-lvlhdr" title="Levels up from this theme (1 = direct parent)">&uarr;</span>';
-      ancestorsBlock = toggleBlock('Ancestors', listInner, 'tl-anc', [lvlHdr, 'Theme', 'Description'], rows);
+      const ab = toggleBlock('Ancestors', listInner, 'tl-anc', [lvlHdr, 'Theme', 'Description'], rows, `${slug}.json`, 'anc');
+      ancestorsBlock = ab.html;
+      if (ab.rowsHtml) overflow['anc'] = ab.rowsHtml;
     }
     const children = (childrenByTheme.get(t.name) ?? []).sort();
     let childrenBlock = '';
     if (children.length > 0) {
       const listInner = `<p class="inline-list">${children.map(themeLink).join(', ')}</p>`;
       const rows = children.map(n => `<tr><td>${themeLink(n)}</td><td>${esc(descByTheme.get(n) ?? '')}</td></tr>`);
-      childrenBlock = toggleBlock(`Child themes (${children.length})`, listInner, 'tl-child', ['Theme', 'Description'], rows);
+      const cb = toggleBlock(`Child themes (${children.length})`, listInner, 'tl-child', ['Theme', 'Description'], rows, `${slug}.json`, 'child');
+      childrenBlock = cb.html;
+      if (cb.rowsHtml) overflow['child'] = cb.rowsHtml;
     }
     const aside: string[] = [
       ancestorsBlock,
