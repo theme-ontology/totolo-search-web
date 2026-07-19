@@ -380,7 +380,11 @@ ul.plain li { margin-bottom: .2rem; font-size: .85rem; }
 .copy-name.copied { color: #2f9e44; }
 .copy-name.copied::after { content: "Copied"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 3px; font-size: .62rem; font-weight: 600; color: #2f9e44; background: #fff; padding: 0 .2rem; white-space: nowrap; }
 @media (min-width: 900px) {
-  .doc-grid { grid-template-columns: minmax(0, 1fr) 280px; grid-template-areas: "intro aside" "main aside"; }
+  /* Rows: intro sized to content, main's row (1fr) absorbs any surplus height. Without this, a tall
+     aside (e.g. child-themes toggled to a table) spanning both rows inflates the intro row and pushes
+     the main/usages panel down, leaving white space above it. align-items:start keeps main at the top
+     of its row, so the leftover lands below it instead. */
+  .doc-grid { grid-template-columns: minmax(0, 1fr) 280px; grid-template-areas: "intro aside" "main aside"; grid-template-rows: auto 1fr; }
   .doc-aside { border-left: 1px solid #eef0f2; padding-left: 1.5rem; }
 }
 /* Narrow screens (phones): drop the card chrome (border, radius, inner padding,
