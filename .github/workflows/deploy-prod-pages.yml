@@ -1,0 +1,107 @@
+name: Deploy PROD pages (fast, no index rebuild)
+
+# Fast lane: re-render the static theme/story/front/versions/stats pages for prod and upload ONLY
+# the page files -- never the index/data. Crucially it does NOT regenerate the corpus from the
+# latest ontology (that is theming-owned); it renders from prod's OWN already-published per-version
+# datasets (themes/stories/collections.json on the bucket), so page CONTENT is byte-identical and
+# only the markup changes. This is what lets a UI patch -- and a backfill across past releases --
+# ship without rebuilding any index.
+#
+# Role totolo-search-web-prod-deploy can write only presentation prefixes (explicit Deny on
+# latest.json / *.bin / minisearch.json / dataset *.json / versions.json / models), so an errant
+# upload of a data file fails closed.
+#
+# Triggers: a published Release (auto -> root), or manual dispatch AGAINST A TAG:
+#   gh workflow run deploy-prod-pages.yml --ref vX -f versions='root v2025.04'   (or 'all')
+# Branch dispatch is rejected by AWS OIDC by design (trust = refs/tags/v*).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Space-separated version dirs to (re)render: 'root', release tags like 'v2025.04', or 'all'"
+        required: false
+        default: root
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod-pages
+  cancel-in-progress: false   # a backfill may render several versions -- don't cancel mid-run
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: eu-west-1
+  AWS_ROLE_ARN: arn:aws:iam::777087578287:role/totolo-search-web-prod-deploy
+  S3_BUCKET: totolo-web-prod
+  CLOUDFRONT_DISTRIBUTION_ID: E18HZDKQXC49C4
+
+jobs:
+  deploy-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # github.ref = the release tag -> render with the released pages.ts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render from published data + upload page files (per version)
+        env:
+          VERSIONS_INPUT: ${{ github.event.inputs.versions || 'root' }}
+        run: |
+          set -euo pipefail
+          BUCKET="${{ env.S3_BUCKET }}"; CF="${{ env.CLOUDFRONT_DISTRIBUTION_ID }}"; CC="public, max-age=3600"
+
+          # Resolve the version list. 'all' = root + every released version from prod's versions.json.
+          VERSIONS="$VERSIONS_INPUT"
+          if [ "$VERSIONS" = "all" ]; then
+            aws s3 cp "s3://$BUCKET/versions.json" versions.json
+            TAGS=$(node -e "const v=(JSON.parse(require('fs').readFileSync('versions.json')).versions||[]);console.log(v.filter(x=>x.release&&x.tag).map(x=>x.tag).join(' '))")
+            VERSIONS="root $TAGS"
+          fi
+          echo "Rendering versions: $VERSIONS"
+
+          for V in $VERSIONS; do
+            if [ "$V" = "root" ]; then DP=""; SB=""; else DP="$V/"; SB="/$V"; fi
+            echo "=== $V  (data/dest prefix '${DP:-<root>}', SITE_BASE '${SB:-<root>}') ==="
+
+            # Pull this version's OWN published datasets (never the latest ontology) and reassemble
+            # the raw corpus the renderer expects: { lto, themes, stories, collections }.
+            aws s3 cp "s3://$BUCKET/${DP}themes.json" themes.json
+            aws s3 cp "s3://$BUCKET/${DP}stories.json" stories.json
+            aws s3 cp "s3://$BUCKET/${DP}collections.json" collections.json
+            node -e "const fs=require('fs');const t=JSON.parse(fs.readFileSync('themes.json'));const s=JSON.parse(fs.readFileSync('stories.json'));const c=JSON.parse(fs.readFileSync('collections.json'));fs.writeFileSync('corpus.json',JSON.stringify({lto:t.lto,themes:t.themes||[],stories:s.stories||[],collections:c.collections||[]}));"
+
+            rm -rf dist-data
+            SITE_BASE="$SB" HIDE_SOURCE_LINK=1 npm run pages   # tsx build.ts corpus.json dist-data --pages-only
+
+            # Upload ONLY presentation. Page subtrees are page-owned -> scoped --delete drops stale
+            # files. Root template files force-cp (--size-only can miss same-size edits). The Deny in
+            # the role's policy guarantees no data artifact can be written even if globs were wrong.
+            for dir in theme story versions stats; do
+              if [ -d "dist-data/$dir" ]; then
+                aws s3 sync "dist-data/$dir/" "s3://$BUCKET/${DP}$dir/" --delete --size-only --cache-control "$CC"
+              fi
+            done
+            for f in index.html pages.css pages.js robots.txt favicon.svg; do
+              if [ -f "dist-data/$f" ]; then
+                aws s3 cp "dist-data/$f" "s3://$BUCKET/${DP}$f" --cache-control "$CC"
+              fi
+            done
+
+            aws cloudfront create-invalidation --distribution-id "$CF" \
+              --paths "/${DP}" "/${DP}index.html" "/${DP}pages.css" "/${DP}pages.js" \
+                      "/${DP}theme/*" "/${DP}story/*" "/${DP}versions/*" "/${DP}stats/*"
+          done

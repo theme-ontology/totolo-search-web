@@ -1,0 +1,70 @@
+name: Deploy PROD web app (fast, SPA only)
+
+# Fast lane: deploy ONLY the search SPA (packages/web) to prod (themeontology.org) /search/,
+# WITHOUT a theming publish-prod / index rebuild. Assumes role totolo-search-web-prod-deploy,
+# whose IAM policy can write only presentation prefixes (explicit Deny on the theming-owned data
+# artifacts), so an errant upload fails closed.
+#
+# Triggers: a published Release (auto), or manual dispatch AGAINST A TAG (gh workflow run
+# deploy-prod-web.yml --ref vX). The prod role's OIDC trust only permits refs/tags/v*, so a branch
+# dispatch is rejected by AWS by design. Use only for presentation-only releases; a release that
+# changes the index/data must go through theming publish-prod.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod-web
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: eu-west-1
+  AWS_ROLE_ARN: arn:aws:iam::777087578287:role/totolo-search-web-prod-deploy
+  S3_BUCKET: totolo-web-prod
+  CLOUDFRONT_DISTRIBUTION_ID: E18HZDKQXC49C4
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # github.ref = the release tag -> build the released SPA
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      - name: Build search app (production, base /search/)
+        working-directory: packages/web
+        env:
+          APP_BASE: /search/
+          VITE_LATEST_JSON_URL: /latest.json
+          VITE_MODELS_URL: /models/
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload SPA to /search/
+        run: |
+          # /search/ is 100% SPA-owned; scoped --delete drops stale hashed assets, --size-only
+          # skips unchanged files. index.html keeps the same byte length when only the hashed
+          # bundle name changes, so --size-only would skip it and leave it pointing at the deleted
+          # old bundle (404) -- always re-cp it.
+          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=3600"
+          aws s3 sync packages/web/dist/ "s3://$BUCKET/search/" --delete --size-only --cache-control "$CC"
+          aws s3 cp packages/web/dist/index.html "s3://$BUCKET/search/index.html" --cache-control "$CC"
+
+      - name: Invalidate /search/
+        run: |
+          aws cloudfront create-invalidation --distribution-id "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/search/*"
