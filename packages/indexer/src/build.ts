@@ -8,6 +8,7 @@ import type { Manifest } from '@totolo-search/core';
 import { loadCorpus } from './corpus.js';
 import { embedTexts, packEmbeddings, EMBED_DIMS } from './embed.js';
 import { writePages } from './pages.js';
+import { writeAssets } from './page-assets.js';
 import { upload } from './upload.js';
 
 const args = process.argv.slice(2);
@@ -22,6 +23,9 @@ const indexPrefix = prefixFlag >= 0 && args[prefixFlag + 1] ? args[prefixFlag + 
 // existing index + embedding artifacts. Skips the slow embedding step — for fast
 // local iteration on page markup/styling.
 const pagesOnly = args.includes('--pages-only');
+// Even faster than --pages-only: write ONLY pages.css + pages.js (CSS/JS live in page-assets.ts).
+// No corpus, no page render -- for CSS/JS-only changes. corpusPath arg is ignored in this mode.
+const assetsOnly = args.includes('--assets-only');
 // Path to the previously deployed latest.json. Embeddings (the slow step) depend only on
 // the corpus + model, so when those are unchanged vs this manifest we skip generating them
 // and reuse the deployed ones. Missing/mismatched -> full rebuild.
@@ -34,6 +38,12 @@ function sha256hex(data: Buffer | string): string {
 
 async function main() {
   await mkdir(outDir, { recursive: true });
+
+  if (assetsOnly) {
+    await writeAssets(outDir);
+    console.log('Assets-only: wrote pages.css + pages.js (no corpus, no page render).');
+    return;
+  }
 
   console.log(`Loading corpus from: ${corpusPath}`);
   const docs = await loadCorpus(corpusPath);

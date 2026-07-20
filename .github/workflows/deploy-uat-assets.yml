@@ -1,0 +1,59 @@
+name: Deploy UAT assets (fast, CSS/JS only)
+
+# Fastest lane: ship ONLY pages.css + pages.js (the shared page styling/behavior, which now live in
+# packages/indexer/src/page-assets.ts) to the bucket root. No corpus, no page render, no SPA build --
+# a CSS/JS-only change deploys in ~15s instead of the ~2min full page re-render, and re-renders none
+# of the ~7k theme/story pages (their HTML is byte-identical for a CSS/JS change anyway).
+#
+# Auto-runs when only page-assets.ts changes on main; structural changes to pages.ts still go through
+# deploy-uat-pages.yml (a full render, which also writes these two files).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['packages/indexer/src/page-assets.ts']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-uat-assets
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: eu-west-1
+  AWS_ROLE_ARN: arn:aws:iam::777087578287:role/totolo-search-web-uat-deploy
+  S3_BUCKET: totolo-web-uat
+  CLOUDFRONT_DISTRIBUTION_ID: ENYYNF7Z2NR6D
+
+jobs:
+  deploy-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # always ship the latest assets, not the triggering commit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      - name: Build page assets (pages.css + pages.js)
+        run: npm run assets   # build.ts . dist-data --assets-only (no corpus, no render)
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload pages.css + pages.js + invalidate
+        run: |
+          BUCKET="${{ env.S3_BUCKET }}"; CC="public, max-age=3600"
+          aws s3 cp dist-data/pages.css "s3://$BUCKET/pages.css" --cache-control "$CC"
+          aws s3 cp dist-data/pages.js  "s3://$BUCKET/pages.js"  --cache-control "$CC"
+          aws cloudfront create-invalidation --distribution-id "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/pages.css" "/pages.js"

@@ -29,6 +29,7 @@ on:
     # pages.ts) still triggers this full build, which rebuilds the SPA too.
     paths-ignore:
       - 'packages/indexer/src/pages.ts'
+      - 'packages/indexer/src/page-assets.ts'
       - 'packages/web/**'
       - 'scripts/**'
       - 'docs/**'

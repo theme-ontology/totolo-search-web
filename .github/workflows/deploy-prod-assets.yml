@@ -1,0 +1,70 @@
+name: Deploy PROD assets (fast, CSS/JS only)
+
+# Ship ONLY pages.css + pages.js (shared page styling/behavior from page-assets.ts) to prod -- no
+# corpus, no render, no SPA. For CSS/JS-only changes. Assumes totolo-search-web-prod-deploy (its policy
+# permits writing these presentation files; Deny on data artifacts). Dispatch AGAINST A TAG
+# (gh workflow run deploy-prod-assets.yml --ref vX -f versions='root'|'v2025.04 ...'|'all'); branch
+# dispatch is OIDC-rejected by design. 'all' also refreshes every archived version's own copy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Space-separated: 'root', release tags like 'v2025.04', or 'all'"
+        required: false
+        default: root
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod-assets
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: eu-west-1
+  AWS_ROLE_ARN: arn:aws:iam::777087578287:role/totolo-search-web-prod-deploy
+  S3_BUCKET: totolo-web-prod
+  CLOUDFRONT_DISTRIBUTION_ID: E18HZDKQXC49C4
+
+jobs:
+  deploy-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # github.ref = the release tag -> ship that tag's assets
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      - name: Build page assets (pages.css + pages.js)
+        run: npm run assets
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload pages.css + pages.js per version + invalidate
+        env:
+          VERSIONS_INPUT: ${{ github.event.inputs.versions || 'root' }}
+        run: |
+          set -euo pipefail
+          BUCKET="${{ env.S3_BUCKET }}"; CF="${{ env.CLOUDFRONT_DISTRIBUTION_ID }}"; CC="public, max-age=3600"
+          VERSIONS="$VERSIONS_INPUT"
+          if [ "$VERSIONS" = "all" ]; then
+            aws s3 cp "s3://$BUCKET/versions.json" versions.json
+            TAGS=$(node -e "const v=(JSON.parse(require('fs').readFileSync('versions.json')).versions||[]);console.log(v.filter(x=>x.release&&x.tag).map(x=>x.tag).join(' '))")
+            VERSIONS="root $TAGS"
+          fi
+          echo "Updating assets for: $VERSIONS"
+          for V in $VERSIONS; do
+            if [ "$V" = "root" ]; then DP=""; else DP="$V/"; fi
+            aws s3 cp dist-data/pages.css "s3://$BUCKET/${DP}pages.css" --cache-control "$CC"
+            aws s3 cp dist-data/pages.js  "s3://$BUCKET/${DP}pages.js"  --cache-control "$CC"
+            aws cloudfront create-invalidation --distribution-id "$CF" --paths "/${DP}pages.css" "/${DP}pages.js"
+          done
