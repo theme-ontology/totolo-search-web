@@ -87,21 +87,25 @@ jobs:
             rm -rf dist-data
             SITE_BASE="$SB" HIDE_SOURCE_LINK=1 npm run pages   # tsx build.ts corpus.json dist-data --pages-only
 
-            # Upload ONLY presentation. Page subtrees are page-owned -> scoped --delete drops stale
-            # files. Root template files force-cp (--size-only can miss same-size edits). The Deny in
-            # the role's policy guarantees no data artifact can be written even if globs were wrong.
-            for dir in theme story versions stats; do
-              if [ -d "dist-data/$dir" ]; then
-                aws s3 sync "dist-data/$dir/" "s3://$BUCKET/${DP}$dir/" --delete --size-only --cache-control "$CC"
-              fi
-            done
+            # Upload ONLY presentation. Assets FIRST (index.html/pages.css/pages.js) so new page HTML
+            # never references a stale stylesheet/script if a later step fails. Then the theme/ + story/
+            # page subtrees (page-owned -> scoped --delete). The Deny in the role's policy guarantees no
+            # data artifact can be written even if a glob were wrong.
             for f in index.html pages.css pages.js robots.txt favicon.svg; do
               if [ -f "dist-data/$f" ]; then
                 aws s3 cp "dist-data/$f" "s3://$BUCKET/${DP}$f" --cache-control "$CC"
               fi
             done
+            # stats/ + versions/ are intentionally NOT shipped by this fast lane (they carry no toggle,
+            # and the scoped prod-deploy role doesn't grant them); the shared pages.css/js above still
+            # restyle them, and the full theming publish owns their markup.
+            for dir in theme story; do
+              if [ -d "dist-data/$dir" ]; then
+                aws s3 sync "dist-data/$dir/" "s3://$BUCKET/${DP}$dir/" --delete --size-only --cache-control "$CC"
+              fi
+            done
 
             aws cloudfront create-invalidation --distribution-id "$CF" \
               --paths "/${DP}" "/${DP}index.html" "/${DP}pages.css" "/${DP}pages.js" \
-                      "/${DP}theme/*" "/${DP}story/*" "/${DP}versions/*" "/${DP}stats/*"
+                      "/${DP}theme/*" "/${DP}story/*"
           done
